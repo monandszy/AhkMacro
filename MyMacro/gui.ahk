@@ -10,7 +10,6 @@ SetBatchLines, -1
 SetTitleMatchMode, 2
 DetectHiddenWindows, On
 DetectHiddenText, On
-WinSetTitle, %A_ScriptHwnd%, , "Macro Recorder"
 SetWorkingDir %A_ScriptDir%
 
 ;----------------------------------------------------
@@ -18,12 +17,12 @@ global MyLogFile:= A_ScriptDir . "/log.log"
 global EditorPath:="C:\Program Files\VSCodium\VSCodium.exe"  
 global TimingMode = "Precise" 
 global FileSaveMode := "Append"
-global NewRecordName := ""
 global RecordFolderName := "Macros"
 global RecordFolderPath := A_ScriptDir . "\" . RecordFolderName "\"
 global PlaySpeed := 1.0
+global UpdateLatestSelectOnRecord := True
 global LogOptions := ({
-(Join  
+  (Join  
   "LogKeyboard": False,
   "LogControl": False,
   "LogSpecial": False,
@@ -44,7 +43,10 @@ global buttonEnabled := []
 global RecentTip := ""
 global TipBackup := ""
 global TipToggle := 0
-global LatestRecordPath
+global LatestRecordName := "Null"
+global LatestRecordPath := "Null"
+global LatestSelectPath := "Null"
+global LatestSelectName := "Null"
 global PlayTitle
 global PlayingPID
 global AHK := A_IsCompiled ? A_ScriptDir "\AutoHotkey.exe" : A_AhkPath
@@ -137,7 +139,7 @@ Record:
     EnableMainButton("Play")
     EnableMainButton("Exit")
     DisableMainButton("Pause")
-    UpdateTip("Saved " + NewRecordName)
+    UpdateTip("Saved " + LatestRecordName)
   }
   else { ; Go to State 2
     SetLatestRecordPath()
@@ -147,7 +149,7 @@ Record:
     DisableMainButton("Play")
     DisableMainButton("Exit")
     EnableMainButton("Pause")
-    UpdateTip("Recording to " + NewRecordName)
+    UpdateTip("Recording to " + LatestRecordName)
   }
 Return
 
@@ -183,8 +185,8 @@ Play:
     UpdateTip("Stopped: " . PlayTitle)
   } 
   else { ; Go to State 2
-    If (!FileExist(LatestRecordPath)) {
-      UpdateTip("File on LatestRecordPath does not exist")
+    If (!FileExist(LatestSelectPath)) {
+      UpdateTip("File " LatestSelectName " does not exist")
       Return
     }
     Play()
@@ -199,7 +201,7 @@ Return
 
 Play() {
 global PlayTitle, PlayingPID
-  PlayTitle := RegExReplace(LatestRecordPath, ".*\\(.*?)\.ahk$", "$1")
+  PlayTitle := LatestSelectName
   Run, %AHK% /r %LatestRecordPath%,,, OutputPID
   PlayingPID := OutputPID
   SetTimer, CheckPlay, 1000
@@ -211,7 +213,7 @@ StopPlay() {
 }
 
 CheckPlay:
-global PlayTitle, PlayingPID
+global PlayingPID
   Exists := ProcessExist(PlayingPID)
   if (Exists)  {
     Return
@@ -227,6 +229,13 @@ ProcessExist(PID) {
 }
 
 Edit:
+global LatestSelectPath, LatestSelectName
+  if (FileExist(LatestSelectPath)) {
+    Run, % """" EditorPath """ """ LatestSelectPath """"
+      UpdateTip("Editing " LatestSelectName)
+  } else {
+    UpdateTip("File " LatestSelectName " does not exist")
+}
 Return
 
 Exit:
@@ -341,10 +350,10 @@ LoadRecordOptions() {
 }
 
 SubmitRecord:
-global NewRecordName
+global LatestRecordName
   GuiControlGet, inputText, , RecordInputText
-  NewRecordName = %inputText%
-  UpdateTip("SetNewRecordName: " . NewRecordName)
+  LatestRecordName = %inputText%
+  UpdateTip("LatestNewRecordName: " . LatestRecordName)
   Gui, Record: Hide
 Return
 
@@ -451,9 +460,10 @@ LoadPlayOptions() {
 }
 
 PlayFile:
-global RecordFolderPath
+global LatestSelectPath, LatestSelectName
   GuiControlGet, ButtonText, FocusV  ; Get the text of the clicked button
-  LatestRecordPath := RecordFolderPath . ButtonText . ".ahk"
+  LatestSelectPath := RecordFolderPath . ButtonText . ".ahk"
+  LatestSelectName := ButtonText
   Gosub, Play
 Return
 
@@ -473,15 +483,11 @@ LoadEditOptions() {
 
 ; C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\Record_20240717225252.ahk
 EditFile:
-global RecordFolderPath
+global RecordFolderPath, LatestEditPath
   GuiControlGet, ButtonText, FocusV  ; Get the text of the clicked button
-  Path := RecordFolderPath . ButtonText . ".ahk"
-  if (FileExist(Path)) {
-    Run, % """" EditorPath """ """ Path """"
-      UpdateTip("Editing " ButtonText)
-  } else {
-    UpdateTip("File " ButtonText " does not exist")
-  }
+  LatestSelectPath := RecordFolderPath . ButtonText . ".ahk"
+  LatestSelectName := ButtonText
+  Gosub, Edit
 Return
 
 LoadExitOptions() {
@@ -536,28 +542,33 @@ if hidebuttons {
 Return
 
 SetLatestRecordPath() {
-  global NewRecordName, RecordFolderPath, LatestRecordPath
-  if (RegExMatch(NewRecordName, "Record_\d{12}") && FileSaveMode != "Override") 
-    NewRecordName := "Record_" . A_Now
-  else if (NewRecordName = "") 
-    NewRecordName := "Record_" . A_Now
-  LatestRecordPath := A_ScriptDir . "\" . RecordFolderName "\" . NewRecordName . ".ahk"
+  global LatestRecordName, RecordFolderPath, LatestRecordPath
+  if (RegExMatch(LatestRecordName, "Record_\d{12}") && FileSaveMode != "Override") 
+    LatestRecordName := "Record_" . A_Now
+  else if (LatestRecordName = "Null" || LatestRecordName = "") 
+    LatestRecordName := "Record_" . A_Now
+  LatestRecordPath := A_ScriptDir . "\" . RecordFolderName "\" . LatestRecordName . ".ahk"
   if (FileSaveMode = "Override" && FileExist(LatestRecordPath)) {
     FileDelete %LatestRecordPath% 
   }
-  else if(FileSaveMode = "New" && !RegExMatch(NewRecordName, "Record_\d{12}")) {
+  else if(FileSaveMode = "New" && !RegExMatch(LatestRecordName, "Record_\d{12}")) {
     highest:= 0
     Loop, %RecordFolderPath%\*.ahk
     {
       SplitPath, A_LoopFilePath, FileName
-      if (InStr(FileName, NewRecordName "_")) {
-        number := StrSplit(FileName, NewRecordName "_")[2]
+      if (InStr(FileName, LatestRecordName "_")) {
+        number := StrSplit(FileName, LatestRecordName "_")[2]
         number := StrReplace(number, ".ahk", "")
         if (number > highest) 
           highest := number
       }
     }
     highest++
-    LatestRecordPath := A_ScriptDir "\" RecordFolderName "\" NewRecordName "_" highest ".ahk"
+    LatestRecordName := LatestRecordName "_" highest
+    LatestRecordPath := A_ScriptDir "\" RecordFolderName "\" LatestRecordName ".ahk"
+  }
+  if (UpdateLatestSelectOnRecord) {
+    LatestSelectPath := LatestRecordPath
+    LatestSelectName := LatestRecordName
   }
 }
