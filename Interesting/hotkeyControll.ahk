@@ -2,6 +2,12 @@
 #NoEnv
 SetTitleMatchMode, 2
 
+OnMessage(0x0401, "Say")
+
+Say() {
+  MsgBox, Cat
+}
+
 Gui, Main: Add, Button, vEnable gEnable, Enable
 Gui, Main: Add, Button, vDisable gDisable, Disable
 Gui, Main: Add, Button,, Cat

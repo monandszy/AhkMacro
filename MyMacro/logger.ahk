@@ -1,166 +1,242 @@
 #InstallKeybdHook
+#Persistent
 #SingleInstance, force
 #NoEnv
+CoordMode, ToolTip
+
+SetBatchLines, -1
+DetectHiddenWindows on
+SetTitleMatchMode, 2
+Thread, NoTimers
+SetWorkingDir %A_ScriptDir%
+; global Coord := "Screen"
 
 ; global NewRecordFile = "TEST"
 global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11,F12"
 global SpecialKeys := "NumpadLeft,NumpadRight,NumpadEnter,Home,End,PgUp,PgDn,Left,Right,Up,Down,Delete,Insert"
 global ControlKeys := "Alt,Control,Shift,Win"
-global MouseKeys := "LButton,RButton,MButton"
+global MouseKeys := "LButton,RButton,MButton,XButton1,XButton2"
 global PressedLog := []
-global LogArr := ""
-global Aggregator
+global LogArr := []
+global Aggregator := ""
 global AggregateActionDelay := 100
-global RecordBlock := False 
-; global isLogKeyboard := False
-; global isLogControl := False
-; global isLogSpecial := False
-; global isLogMouse := False
-; global isLogColor := False
-; global isLogWindow := False
-; global isLogDelay := False
-; global MyLogFile = A_ScriptDir . "/log.log"
+global LoggerLogFile = A_ScriptDir . "/LoggerLog.log"
+;----------------------------------------------------
+global LatestRecordName := "TestRecord"
+global FileSaveMode := "Override"
+global TimingMode := "Precise"
+global LogOptions := []
+; "LogColor,LogSleep,LogKeyboard,LogMouse,LogWindow,TimingMode,FileSaveMode,NewRecordPath"
+; global LogOptions := ({
+  ; (Join  
+  ; "LogColor": False,
+  ; "LogSleep": True,
+  ; "LogKeyboard": True,
+  ; "LogMouse": True,
+  ; "LogWindow": False,
+  ; "TimingMode": "",
+  ; "FileSaveMode": "",
+  ; "NewRecordPath": "",
+; )})
+;----------------------------------------------------
+FileDelete %LoggerLogFile%
+Log(name, text) {
+  FileAppend, %name%:[%text%]`n, %LoggerLogFile%,
+}
+Log("DateTime", A_Now)
 
-; FileDelete %MyLogFile%
-; Log(name, text) {
-;   FileAppend, %name%:[%text%]`n, %MyLogFile%,
-; }
+Unstuck() {
+  ; Sometimes it stops registering hotkeys, this helps for some reason..?
+}
 
-; Record()
-; return
+;----------------------------------------------------
+global WM_ON_LOGGER := 0x0401
+global WM_OFF_LOGGER := 0x0402
+global WM_PAUSE_LOGGER := 0x0403
+global WM_RESUME_LOGGER := 0x0404
+global WM_UPDATE_LOGGER := 0x0405
+global WM_BROADCAST := 0x0406
+OnMessage(WM_ON_LOGGER, "RecordStart")
+OnMessage(WM_OFF_LOGGER, "RecordEnd")
+OnMessage(WM_PAUSE_LOGGER, "Pause")
+OnMessage(WM_RESUME_LOGGER, "Resume")
+OnMessage(WM_UPDATE_LOGGER, "UpdateLogOptions")
+;----------------------------------------------------
 
-; F7::
-; StopTMP:
-; Stop()
-; return
+UpdateLogOptions(wParam, lParam, msg, hwnd) {
+  ; Get the new options from wParam and lParam
 
-RecordLog() {
+  ; Parse the new options and update LogOptions
+  Log("Update", hwnd)
+  ; Loop, Parse, newLogOptions, `n
+  ; {
+  ;     RegExMatch(A_LoopField, "(\w+):(\w+)", match)
+  ;     key := match1
+  ;     value := match2 = "True"
+  ;     LogOptions[key] := value
+  ; }
+}
+;----------------------------------------------------
+
+RecordStart(wParam, lParam, msg, hwnd) {
+  ; Suspend, On
+  Log("UpdateR", hwnd)
   LogArr := []
   Aggregator := ""
-  RedirectKeys("On")
+  ; RedirectLogKeyboard(LogOptions["LogKeyboard"])
+  ; RedirectLogMouse(LogOptions["LogMouse"])
+  
+  ; SetTimer, FlushLog, 5000 
+  ; Suspend, Off
   ; SetTimer, LogWindow, %f%
   ; if (f="On")
   ;   Gosub, LogWindow
 }
 
-StopLog() {
-  RedirectKeys("Off")
-  If (TimingMode = "Aggregate") {
-    LogAggregator()
-  } 
-  FlushLog()
+RecordEnd(wParam, lParam, msg, hwnd) {
+  Log("UpdateE", hwnd)
+  ; RedirectLogKeyboard("Off")
+  ; RedirectLogMouse("Off")
+  ; If (TimingMode = "Aggregate")
+  ;   LogAggregator()
+  ; FlushLog()
+  ; SetTimer, FlushLog, Off 
+  ; Suspend, On
 }
 
-PauseLog() {
-  RecordBlock := True
+Pause(wParam, lParam, msg, hwnd) {
+  Suspend, On
   FlushLog()
   SetTimer, FlushLog, Off 
 }
 
-ResumeLog() {
-  RecordBlock := False
+Resume(wParam, lParam, msg, hwnd) {
+  Suspend, Off
   SetTimer, FlushLog, 5000 
 }
 
 FlushLog() {
   global saveMode, LatestRecordPath
   for i, line in LogArr 
+  {
     content .= line . "`n"
+  }
+  Log("Flush","")
   MsgBox, %content%
   FileAppend, %content%, %LatestRecordPath%
   LogArr := []
 }
 
-RedirectKeys(isEnabled) {
-  Loop, 254 
+RedirectLogMouse(isEnabled) {
+  ; VK 1,2,4,5,6
+  For i, key in StrSplit(MouseKeys, ",") {
+    vkey := Format("vk{:X}", GetKeyVK(key))
+    Log("vkey", vkey)
+    Hotkey, % "~*" vkey, LogDownMouseKey, %isEnabled% UseErrorLevel
+    Hotkey, % "~*" vkey " Up", LogUpMouseKey, %isEnabled% 
+  }
+}
+
+RedirectLogKeyboard(isEnabled) {
+  vkey := Format("vk{:X}", 3) ; Missing VK3
+  Hotkey, % "~*" vkey, LogDownControlKey, %isEnabled% UseErrorLevel
+  Hotkey, % "~*" vkey " Up", LogUpControlKey, %isEnabled% UseErrorLevel
+
+  Loop, 248 ; 254 VK exist total, skips mouse
   {
-    vkey:=Format("vk{:X}", A_Index)
-    key:=GetKeyName(vkey)
-    if (!hasValue(ExcludedKeys, key) && key != "") {
-      Hotkey, % "~*" vkey, LogHotKey, %isEnabled% UseErrorLevel
-      Hotkey, % "~*" vkey " Up", LogUpHotKey, %isEnabled% UseErrorLevel
+    vkey := Format("vk{:X}", A_Index + 6)
+    key := GetKeyName(vkey)
+    If (!hasValue(ExcludedKeys, key) && key != "") {
+      if(hasValue(ControlKeys, SubStr(key, 2))) {
+        Hotkey, % "~*" vkey, LogDownControlKey, %isEnabled% UseErrorLevel
+        Hotkey, % "~*" vkey " Up", LogUpControlKey, %isEnabled% UseErrorLevel
+      }
+      else {
+        Hotkey, % "~*" vkey, LogHotKey, %isEnabled% UseErrorLevel
+        Hotkey, % "~*" vkey " Up", LogUpHotKey, %isEnabled% UseErrorLevel
+      } 
     }
   }
-  For i,key in StrSplit(SpecialKeys, ",")
-    {
+  For i, key in StrSplit(SpecialKeys, ",")
+  {
     sc:=Format("sc{:03X}", GetKeySC(key))
     if (!hasValue(ExcludedKeys, key)) {
       Hotkey, % "~*" sc , LogHotKey, %isEnabled% UseErrorLevel
       Hotkey, % "~*" sc " Up", LogUpHotKey, %isEnabled% UseErrorLevel
     }
   }
-  if (isEnabled = "On") {
-    SetTimer, FlushLog, 5000 
-  } else {
-    SetTimer, FlushLog, Off 
-  }
 }
 
 LogUpHotKey() {
-  If (!TimingMode = "Precise" || RecordBlock)
+global TimingMode
+  Unstuck()
+  If (TimingMode != "Precise")
     Return
   vksc := SubStr(A_ThisHotkey, 3, -3)
   key := GetKeyName(vksc)
   ; Log("KeyUp", A_ThisHotkey " " vksc " " key)
-  if(hasValue(ControlKeys, SubStr(key, 2))) {
-    key := StrReplace(key, "Control", "Ctrl")
-    LogControlKey(key)
-  }
-  ; else if key in MouseKeys
-  ; {
-  ;   LogMouseKey(key)
-  ; } 
-  else {
-    PressedLog.Remove(vksc)
-    key := key . " Up"
-    formattedKey := key ~= "\w" ? "{" key "}" : "{" vksc "}"
-    LogKeyboard("Send, " + formattedKey)
-  }
+  SendPreciseKey("Up", vksc, key)
 }
-; Critical
+
 LogHotKey() {
-  If (RecordBlock)
-    Return
+global TimingMode
+  Unstuck()
   vksc := SubStr(A_ThisHotkey, 3)
   key := GetKeyName(vksc)
   ; Log("KeyDown", A_ThisHotkey " " vksc " " key)
-  if(hasValue(ControlKeys, SubStr(key, 2))) {
-    key := StrReplace(key, "Control", "Ctrl")
-    LogControlKey(key)
-  } 
-  ; else if(key in LButton,RButton,MButton) {
-  ;   LogMouseKey(key)
-  ; } 
-  ; else if ((key="NumpadLeft" || key="NumpadRight") && !GetKeyState(key,"P")){
-  ;   return
-  ; }
-  else {
-    if(TimingMode = "Precise") {
-      If (PressedLog[vksc] = "D") 
-        return ; Add to pressed down array to prevent duplicaiton
-      PressedLog[vksc] := "D"
-      key := key . " Down"
-      formattedKey := key ~= "\w" ? "{" key "}" : "{" vksc "}"
-    }
-    else if(TimingMode = "Aggregate") {
-      if (StrLen(key) = 1 && key~="\w") {
-        Aggregator:= %Aggregator% . %key%
-        ; Log("Aggregator", Aggregator)
-        return ; Collect Words until interrupted
-      } 
-      LogAggregator()
-      formattedKey := StrLen(key)>1 ? "{" key "}" : "{" vksc "}"
-    }
-    LogKeyboard("Send, " + formattedKey)
+  if(TimingMode = "Precise") {
+    If (PressedLog[vksc] = "Down") 
+      Return
+    SendPreciseKey("Down", vksc, key)
+    Return
+  }
+  else if(TimingMode = "Aggregate") {
+    if (StrLen(key) = 1 && key~="\w") {
+      Aggregator := Aggregator . key
+      Return ; Collect Words until interrupted
+    } 
+    LogAggregator()
+    formattedKey := StrLen(key)>1 ? "{" key "}" : "{" vksc "}"
+    LogData("Send, " + formattedKey)
   }
 }
 
-LogAggregator() {
-  LogKeyboard("Send, " + Aggregator)
-  Aggregator := ""
+SendPreciseKey(state, vksc, key) {
+  PressedLog[vksc] := state
+  key := key . " " . state
+  formattedKey := key ~= "\w" ? "{" key "}" : "{" vksc "}"
+  LogData("Send, " + formattedKey)
 }
 
-LogKeyboard(data) {
+; Controll keys always in Precise mode
+LogDownControlKey() {
+  If (TimingMode = "Aggregate")
+    LogAggregator()
+  vksc := SubStr(A_ThisHotkey, 3)
+  key := GetKeyName(vksc)
+  If (PressedLog[vksc] = "Down") 
+    Return
+  key := StrReplace(key, "Control", "Ctrl")
+  SendPreciseKey("Down", vksc, key)
+}
+
+LogUpControlKey() {
+  If (TimingMode = "Aggregate")
+    LogAggregator()
+  vksc := SubStr(A_ThisHotkey, 3, -3)
+  key := GetKeyName(vksc)
+  key := StrReplace(key, "Control", "Ctrl")
+  SendPreciseKey("Up", vksc, key)
+}
+
+LogAggregator() {
+  If (Aggregator != "") {
+    LogData("Send, " + Aggregator)
+    Aggregator := ""
+  }
+}
+
+LogData(data) {
   static LastLogTime
   cTime := A_TickCount
   Delay := (LastLogTime ? cTime-LastLogTime : 0), LastLogTime := cTime
@@ -171,6 +247,37 @@ LogKeyboard(data) {
     LogArr.Push("  Sleep, " . Delay . " //ps")
   }
   LogArr.Push(data)
+}
+
+LogUpMouseKey() {
+  Unstuck()
+  If (TimingMode != "Precise")
+    Return
+  vksc := SubStr(A_ThisHotkey, 3, -3)
+  key := GetKeyName(vksc)
+  clickType := SubStr(key,1,1)
+  Log("LogUpMouseKey", clickType)
+  SendMouseKey("U", vksc, clickType)
+}
+
+LogDownMouseKey() {
+  Unstuck()
+  vksc := SubStr(A_ThisHotkey, 3)
+  key := GetKeyName(vksc)
+  If (PressedLog[vksc] = "D") 
+    Return
+  clickType := SubStr(key,1,1)
+  state := TimingMode = "Precise" ? "D" : ""
+  SendMouseKey(state, vksc, clickType)
+}
+
+SendMouseKey(state, vksc, clickType) {
+  PressedLog[vksc] := state
+  CoordMode, Mouse, %CoordMode%
+  MouseGetPos, X, Y, windowHwnd
+  If (id = guiHwnds["Main"])
+    Return
+  formattedKey := clickType ", " X ", " Y ",,, " state
 }
 
 ; LogWindow() {
@@ -205,60 +312,11 @@ LogKeyboard(data) {
 ;     Logg(s)
 ; }
 
-LogMouseKey(key) {
-  return
-  ; global gui_id, LogArr, Coord
-  ; k:=SubStr(key,1,1)
-  ; CoordMode, Mouse, %Coord%
-  ; MouseGetPos, X, Y, id
-  ; if (id=gui_id)
-  ;   return
-  ; Logg("MouseClick, " k ", " X ", " Y ",,, D")
-  ; CoordMode, Mouse, Screen
-  ; MouseGetPos, X1, Y1
-  ; t1:=A_TickCount
-  ; Critical, Off
-  ; KeyWait, %key%
-  ; Critical
-  ; t2:=A_TickCount
-  ; if (t2-t1<=200)
-  ;   X2:=X1, Y2:=Y1
-  ; else
-  ;   MouseGetPos, X2, Y2
-  ; i:=LogArr.MaxIndex(), r:=LogArr[i]
-  ; if InStr(r, ",,, D") and Abs(X2-X1)+Abs(Y2-Y1)<5
-  ;   LogArr[i]:=SubStr(r,1,-5), Logg()
-  ; else
-  ;   Logg("MouseClick, " k ", " (X+X2-X1) ", " (Y+Y2-Y1) ",,, U")
-}
-
-LogControlKey(key) {
-  key := StrReplace(key, "Control", "Ctrl")
-  return
-  ; global LogArr, Coord
-  ; k:=InStr(key,"Win") ? key : SubStr(key,2)
-  ; if (k="Ctrl")
-  ; {
-  ;   CoordMode, Mouse, %Coord%
-  ;   MouseGetPos, X, Y
-  ; }
-  ; Logg("{" k " Down}",1)
-  ; Critical, Off
-  ; KeyWait, %key%
-  ; Critical
-  ; Logg("{" k " Up}",1)
-  ; if (k="Ctrl")
-  ; {
-  ;   i:=LogArr.MaxIndex(), r:=LogArr[i]
-  ;   if InStr(r,"{Blind}{Ctrl Down}{Ctrl Up}")
-  ;     LogArr[i]:="MouseMove, " X ", " Y
-  ; }
-}
 
 ; checks if item exists in a string
-hasValue(list, item, del:=","){
+hasValue(list, item, del:=",") {
   if (item = "")
-    return False
+    Return False
 	haystack:=del
 	if !IsObject(list)
 		haystack.= list del

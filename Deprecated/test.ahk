@@ -1,20 +1,16 @@
 #SingleInstance, force
-global vk := "LButton" ; Replace "vkCodeHere" with the desired virtual key code
-LogFile:="C:\Users\Name\Desktop\Temp\Record.txt"
-EditorPath:="C:\Program Files\VSCodium\VSCodium.exe"  
-If not A_IsAdmin
-    Run *RunAs A_ScriptFullPath
+; Define the path you want to loop over
+path := "C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro"
 
-SetWorkingDir %A_ScriptDir%
+; Loop over directories in the specified path
+Loop, Files, %path%\*.*, D
+{
+    ; Get the full path of the current directory
+    dirPath := A_LoopFileFullPath
+    
+    ; Get the name of the current directory
+    dirName := A_LoopFileName
 
-F1::
-Open:
-MsgBox, Cat
-Run, "C:\Users\Name\..My\VSCode\AutoHotKey\Deprecated\test.txt"
-Return
-
-F5::
-Edit:
-Run,% """" EditorPath """ """ LogFile """"
-return
-
+    ; Perform an action with each directory (e.g., display a message box)
+    MsgBox, Directory found: %dirName% %dirPath% 
+}
