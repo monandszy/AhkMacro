@@ -20,7 +20,7 @@ global PressedLog := []
 global LogArr := []
 global Aggregator := ""
 global AggregateActionDelay := 100
-global LoggerLogFile = A_ScriptDir . "/LoggerLog.log"
+global LoggerLogFile = A_ScriptDir . "/Log/LoggerLog.log"
 ;----------------------------------------------------
 global LatestRecordName := "TestRecord"
 global FileSaveMode := "Override"
@@ -67,7 +67,9 @@ UpdateLogOptions(wParam, lParam, msg, hwnd) {
   ; Get the new options from wParam and lParam
 
   ; Parse the new options and update LogOptions
-  Log("Update", hwnd)
+  Log("Update", wParam)
+  Log("Update", lParam)
+  Log("Update", msg)
   ; Loop, Parse, newLogOptions, `n
   ; {
   ;     RegExMatch(A_LoopField, "(\w+):(\w+)", match)
@@ -80,7 +82,6 @@ UpdateLogOptions(wParam, lParam, msg, hwnd) {
 
 RecordStart(wParam, lParam, msg, hwnd) {
   ; Suspend, On
-  Log("UpdateR", hwnd)
   LogArr := []
   Aggregator := ""
   ; RedirectLogKeyboard(LogOptions["LogKeyboard"])
@@ -94,7 +95,6 @@ RecordStart(wParam, lParam, msg, hwnd) {
 }
 
 RecordEnd(wParam, lParam, msg, hwnd) {
-  Log("UpdateE", hwnd)
   ; RedirectLogKeyboard("Off")
   ; RedirectLogMouse("Off")
   ; If (TimingMode = "Aggregate")

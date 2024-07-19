@@ -1,8 +1,8 @@
 ; If not A_IsAdmin ; Needed to Edit Files
 ;   Run *RunAs "%A_ScriptFullPath%"
 #SingleInstance, force
-; #Include %A_ScriptDir%\logger.ahk
 #NoEnv
+#IncludeAgain %A_ScriptDir%\settings.ahk
 
 SetBatchLines, -1
 Thread, NoTimers
@@ -11,41 +11,66 @@ SetTitleMatchMode, 2
 DetectHiddenText, On
 SetWorkingDir %A_ScriptDir%
 ;----------------------------------------------------
-global GuiLogFile := A_ScriptDir . "/guiLog.log"
-global EditorPath :="C:\Program Files\VSCodium\VSCodium.exe"  
-global WorkDir := "Macros"
-global NewRecordName := "TestRecord"
-global RecordFolderPath := A_ScriptDir . "\" . WorkDir "\"
-global PlaySpeed := 1.0
-global UpdateLatestSelectOnRecord := True
-global LogOptions := ({
-  (Join  
-  "LogColor": False,
-  "LogSleep": True,
-  "LogKeyboard": True,
-  "LogMouse": True,
-  "LogWindow": False
-)})
-global TimingMode := "Precise" 
-global FileSaveMode := "Override"
+; Static Options
 ;----------------------------------------------------
-global GuiX, GuiY, GuiWidth, GuiHeight
+global EditorPath := "C:\Program Files\VSCodium\VSCodium.exe"  
+global UpdateLatestSelectOnRecord := True
+global isTipEnabled := True
+;----------------------------------------------------
+; Dynamic Options
+;----------------------------------------------------
+global WorkDir
+global NewRecordName
+global RecordFolderPath
+global PlaySpeed
+global TimingMode
+global FileSaveMode
+global NewRecordPath
+global LatestSelectPath
+global LatestSelectName
+global LogOptions
+
+UpdateSettings() {
+  NewSettings = 
+  (
+  global WorkDir := "%WorkDir%"
+  global NewRecordName := "%NewRecordName%"
+  global RecordFolderPath := "%RecordFolderPath%"
+  global PlaySpeed := %PlaySpeed%
+  global TimingMode := "%TimingMode%"
+  global FileSaveMode := "%FileSaveMode%"
+  global NewRecordPath := "%NewRecordPath%"
+  global LatestSelectPath := "%LatestSelectPath%"
+  global LatestSelectName := "%LatestSelectName%"
+  )
+  NewSettings .= "`nglobal LogOptions := ({"
+  NewSettings .= "`n(Join"
+  For, i,v in LogOptions
+  {
+    NewSettings .= "`n" . i . ":" . v . ","
+  }
+  StringTrimRight, NewSettings, NewSettings, 1
+  NewSettings .= "`n)})"
+
+  FileDelete, settings.ahk
+  FileAppend, %NewSettings%, settings.ahk
+}
+;----------------------------------------------------
+; Util Options
+;----------------------------------------------------
 global SaveModes := "New,Override,Append"
 global TimingModes = "Precise,Aggregate" 
+global IsRecordingPlaying := False
+global RecentTip := ""
+global TipBackup := ""
+global TipToggle := 0
+global PlayTitle
+global PlayingPID
 global guiHwnds := []
 global buttonHwnds := []
 global lastWMHideTime := []
 global buttonToggled := []
 global buttonEnabled := []
-global RecentTip := ""
-global TipBackup := ""
-global TipToggle := 0
-global NewRecordPath := "Null"
-global LatestSelectPath := "Null"
-global LatestSelectName := "Null"
-global IsRecordingPlaying := False
-global PlayTitle
-global PlayingPID
 global AHK := A_IsCompiled ? A_ScriptDir "\AutoHotkey.exe" : A_AhkPath
 IfNotExist, %AHK%
 {
@@ -53,7 +78,6 @@ IfNotExist, %AHK%
   Exit
 }
 ;----------------------------------------------------
-
 global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
 global WM_PAUSE_LOGGER := 0x0403
@@ -63,45 +87,30 @@ global WM_UPDATE_LOG_OPTIONS := 0x0405
 Run, %A_ScriptDir%/Logger.ahk,,, loggerPID
 Sleep, 200
 
-LoggerPath := A_ScriptDir . "\Logger.ahk"
-If (FileExist(LoggerPath)) {
-  WinGet, scriptPID, PID, % LoggerPath
-  global LoggerHwnd := WinExist("ahk_pid" . scriptPID)
-} else {
+global LoggerPath := A_ScriptDir . "\Logger.ahk"
+WinGet, scriptPID, PID, % LoggerPath
+global LoggerHwnd := WinExist("ahk_pid" . scriptPID)
+if (!FileExist(LoggerPath)) {
   MsgBox, 4096, Error, Can't Find %LoggerPath% !
   Exit
 }
-;----------------------------------------------------
+else If (scriptPID = "") {
+  MsgBox, 4096, Error, Logger scriptPID is Null, Increase Sleep Timer
+  Exit
+}
 
-; Send custom messages to control logger script
 PostLoggerMessage(ID) {
-  MsgBox, % ID
   PostMessage, ID, 0,0,, % "ahk_id" . LoggerHwnd
-  MsgBox, % ErrorLevel
+  Log("PostLoggerMessage", ID . " " . ErrorLevel) 
 }
 
-PostUpdateLogger() {
-  payload := ""
-  For, i,v in LogOptions
-  {
-    payload .= i ":" v "`n"
-  }
-  payload .= "FileSaveMode:" FileSaveMode "`n"
-  payload .= "NewRecordPath:" NewRecordPath "`n"
-  payload .= "TimingMode:" TimingMode "`n"
-
-  PostMessage, 0x0405, payload,,, % "ahk_id" . LoggerHwnd
-}
 ;----------------------------------------------------
-
+global GuiLogFile := A_ScriptDir . "/Log/GuiLog.log"
 FileDelete %GuiLogFile%
 Log(name, text) {
   FileAppend, %name%:[%text%]`n, %GuiLogFile%,
 }
 Log("DateTime", A_Now)
-
-IfNotExist %ScriptsDir%
-  FileCreateDir, %ScriptsDir%
 
 ;----------------------------------------------------
 Gui, Main: +AlwaysOnTop +ToolWindow -Caption
@@ -110,6 +119,9 @@ guiHwnds["Main"] := Main_gui_id
 Gui, Main: Font, s11 
 Gui, Main: Margin, 0, 0
 
+global DynamicButtons := "Play,Edit,Exit"
+global StaticButtons := "Record"
+global SpecialButtons := "Pause" ; Work when not recording
 MainButtons = 
 (
 [F1]Record
@@ -135,6 +147,7 @@ Gui, Main: Submit, NoHide
 
 ; Get the position of the main GUI window
 ; x left edge align ; y top align ; w width ; h height
+global GuiX, GuiY, GuiWidth, GuiHeight
 WinGetPos, GuiX, GuiY, GuiWidth, GuiHeight, Macro Recorder
 
 DisableMainButton("Pause")
@@ -143,12 +156,7 @@ UpdateTip("Welcome!")
 Return
 ;----------------------------------------------------
 
-F12::
-  PostUpdateLogger()
-Return
-
 RecordHotkey:
-StopHotkey:
 PlayHotkey:
 EditHotkey:
 ExitHotkey:
@@ -174,7 +182,7 @@ Record:
   if (buttonToggled["Record"]) { ; Revert to State 1
     if (buttonToggled["Pause"]) 
       Resume()
-    PostLoggerMessage(WM_ON_LOGGER)
+    PostLoggerMessage(WM_OFF_LOGGER)
     IsRecordingPlaying := False
     buttonToggled["Record"] := False
     GuiControl, Main: , Record, [F1]Record
@@ -185,8 +193,8 @@ Record:
   }
   else { ; Go to State 2
     SetNewRecordPath()
-    PostUpdateLogger()
-    PostLoggerMessage(WM_OFF_LOGGER)
+    UpdateSettings()
+    PostLoggerMessage(WM_ON_LOGGER)
     IsRecordingPlaying := True
     buttonToggled["Record"] := True
     GuiControl, Main: , Record, [F1]Stop
@@ -212,6 +220,7 @@ Return
 
 Resume() {
   PostLoggerMessage(WM_RESUME_LOGGER)
+  UpdateSettings()
   IsRecordingPlaying := True
   UpdateTip(TipBackup)
   buttonToggled["Pause"] := False
@@ -285,13 +294,14 @@ global LatestSelectPath, LatestSelectName
 Return
 
 Exit:
+  UpdateSettings()
   Gui, Tip: Destroy
   Process, Close, %loggerPID%
   ExitApp
 
 UpdateTip(text:="") {
   global TipToggle ; Cycles trough guis to prevent flickering from Destroying
-  if(text = "")
+  if(text = "" || !isTipEnabled)
     return
   Gui, Tip%TipToggle%: +AlwaysOnTop +ToolWindow -Caption
   Gui, Tip%TipToggle%: +HwndTip_gui_id
@@ -313,28 +323,36 @@ UpdateTip(text:="") {
 ;----------------------------------------------------
 ; Open OptionsX Gui via vlabel (right click support)
 MainGuiContextMenu:
-state := buttonEnabled[A_GuiControl]
-If (A_GuiControl = "Pause") { ; Special treatment, Options function different than Button
-  If (!IsRecordingPlaying) {
-    OpenOptionGui(A_GuiControl)
+  label := A_GuiControl
+  state := buttonEnabled[label]
+  If (hasValue(SpecialButtons, label)) { 
+    If (!IsRecordingPlaying) 
+      OpenStaticOptionGui(label)
+  } 
+  else if (state) {
+    if (hasValue(DynamicButtons, label)) 
+      OpenDynamicOptionGui(label)
+    else If (hasValue(StaticButtons, label))
+      OpenStaticOptionGui(label)
   }
-  Return
-} 
-else if (state) {
-  OpenOptionGui(A_GuiControl)
-}
 Return
 
 ; OptionsX chain (Ctrl hotkey support)
 RecordOptionHotkey:
-StopOptionHotkey:
+label := RegExReplace(A_ThisLabel, "OptionHotkey$")
+state := buttonEnabled[label]
+if (state) {
+  OpenStaticOptionGui(label)
+}
+Return
+
 PlayOptionHotkey:
 EditOptionHotkey:
 ExitOptionHotkey:
 label := RegExReplace(A_ThisLabel, "OptionHotkey$")
 state := buttonEnabled[label]
 if (state) {
-  OpenOptionGui(label)
+  OpenDynamicOptionGui(label)
 }
 Return
 
@@ -342,29 +360,35 @@ Return
 PauseOptionHotkey:
 label := RegExReplace(A_ThisLabel, "OptionHotkey$")
 if (!IsRecordingPlaying) {
-  OpenOptionGui(label)
+  OpenStaticOptionGui(label)
 }
 Return
 
-OpenOptionGui(title) {
+OpenDynamicOptionGui(title) {
+  
+  DetectHiddenWindows, On
+  Hwnd := guiHwnds[title]
+  isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 200 ; byWM (if not passed)
+  ; Log("was", isHiddenbyWM)
+  if (!isHiddenbyWM) {  ; If passed
+    ; Log("Show", !wasHidden)
+  } else if (lastWMHideTime[Hwnd]) {
+    Gui, %title%: Destroy
+    ; Log("DoNothing", A_TickCount)
+    Return
+  } 
+  LoadOptionsGui(title)
+}
+
+OpenStaticOptionGui(title) {
   DetectHiddenWindows, On
   ; Check if Gui already created
   Hwnd := guiHwnds[title]
-  wasHidden := A_TickCount - lastWMHideTime[Hwnd] > 200 ; byWM (if passed)
-  If (title = "Play" || title = "Edit") {
-    if (wasHidden) {
-      Log("Show", wasHidden)
-    } else if (lastWMHideTime[Hwnd]) {
-      Gui, %title%: Destroy
-      Log("DoNothing", A_TickCount)
-      Return
-    }
-  } 
-  else if (WinExist("ahk_id " . Hwnd) + 0) {
+  isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 200 ; byWM (if not passed)
+  if (WinExist("ahk_id " . Hwnd) + 0) {
     DetectHiddenWindows, Off
-    ; Show/Hide Toggle
     window:= title . "Options"
-    if (!WinExist(window) && wasHidden) {
+    if (!WinExist(window) && !isHiddenbyWM) { ; Show/Hide Toggle
       Gui, %title%: show,, %window%
     } else {
       Gui, %title%: hide
@@ -372,6 +396,10 @@ OpenOptionGui(title) {
     DetectHiddenWindows, On
     Return
   }
+  LoadOptionsGui(title)
+}
+
+LoadOptionsGui(title) {
   Gui, %title%: +AlwaysOnTop +ToolWindow -Caption 
   Gui, %title%: +LastFound
   Gui, %title%: +Hwnd%title%_gui_id
@@ -395,13 +423,17 @@ WM_ACTIVATE(wParam, lParam, msg, Hwnd) {
   Hwnd:= Format("0x{:X}", Hwnd)
   if(Hwnd != guiHwnds["Main"]) {
     if (wParam = 0) {
-      If (Hwnd = guiHwnds["Play"]  || Hwnd = guiHwnds["Edit"]) {
-        Log("destr", "WM")
-        Gui, Destroy
+      For i,v in StrSplit(DynamicButtons, ",")
+      {
+        If (Hwnd = guiHwnds[v]) {
+          ; Log("Destroy", "")
+          Gui, Destroy
+          lastWMHideTime[Hwnd] := A_TickCount
+          Return
+        }
       }
-      Else {
-        Gui, Hide
-      }
+      ; Log("Hide", "")
+      Gui, Hide
       ; Timer For eliminating Show after Hide
       lastWMHideTime[Hwnd] := A_TickCount
     }
@@ -453,19 +485,18 @@ LoadPauseOptions() {
   }
   
   global PauseInputText, DecreaseSpeed, IncreaseSpeed
-  Gui, Pause: Add, Button, x0 w20 h20 vDecreaseSpeed gDecreaseSpeed, -
+  Gui, Pause: Add, Text, x0 w1, Spd:
+  Gui, Pause: Add, Button, x+0 w20 h20 vDecreaseSpeed gDecreaseSpeed, -
+  Gui, Pause: Add, Edit, x+0 w45 h20 vPauseInputText Tooltip, %PlaySpeed%
   Gui, Pause: Add, Button, x+0 w20 h20 vIncreaseSpeed gIncreaseSpeed, +
-  Gui, Pause: Add, Edit, x+0 w30 h20 vPauseInputText
   Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitSpeed Default, 
-  Gui, Pause: Add, Text, x0, %A_Space%PlaySpeed:%A_Space%
-  Gui, Pause: Add, Text, x+0 w50 vPlaySpeed, %A_Space%%PlaySpeed%%A_Space%
+  ; Gui, Pause: Add, Text, x+0 w50 vPlaySpeed, %A_Space%%PlaySpeed%%A_Space%
 
   global isLogKeyboard, isLogControl, isLogSpecial, isLogMouse, isLogColor, isLogWindow, isLogSleep
   For name, value in LogOptions {
     isTrue:= value ? "Checked" : ""
     Gui, Pause: Add, Checkbox, x1  %isTrue% vIs%name% g%name%, %name%
   }
-
 }
 
 Precise:
@@ -485,31 +516,30 @@ Return
 
 DecreaseSpeed:
 global PlaySpeed
-  if (PlaySpeed > 2) 
+  if (PlaySpeed > 1) 
     PlaySpeed--
-  else if (PlaySpeed > 0.1)
-    PlaySpeed:= PlaySpeed - 0.1
+  else if (PlaySpeed > 0.2)
+    PlaySpeed := PlaySpeed - 0.1
   trimmed := RTrim(PlaySpeed, 0)
-  GuiControl,, PlaySpeed, %A_Space%%trimmed%
+  GuiControl,, PauseInputText, %trimmed%
   LogSpeedChange()
 Return
 
 IncreaseSpeed:
 global PlaySpeed
-  If (PlaySpeed < 2) 
+  If (PlaySpeed < 1) 
     PlaySpeed:= PlaySpeed + 0.1
   else 
     PlaySpeed++
   trimmed := RTrim(PlaySpeed, 0)
-  GuiControl,, PlaySpeed, %A_Space%%trimmed%
+  GuiControl,, PauseInputText, %trimmed%
   LogSpeedChange()
 Return
 
 SubmitSpeed:
 global PlaySpeed
   GuiControlGet, inputText, , PauseInputText
-  if RegExMatch(inputText, "^\d+(\.\d+)?$")
-  {
+  if (RegExMatch(inputText, "^\d+(\.\d+)?$") && inputText > 0) {
     PlaySpeed = %inputText%
     trimmed := RTrim(PlaySpeed, 0)
     GuiControl,, PlaySpeed, %A_Space%%trimmed%
@@ -521,10 +551,8 @@ global PlaySpeed
 Return
 
 LogSpeedChange() {
-  If (buttonToggled["Pause"]) {
-    ; Log new speed paramter
-  } else {
-    ; format the speed of the latestSelection 
+  If (!IsRecordingPlaying) {
+    ; Log new speed paramter (somehow alter file)
   }
 }
 
@@ -536,8 +564,6 @@ LogSleep:
 global IsRecordingPlaying, LogOptions
   LogOptions[A_ThisLabel] := !LogOptions[A_ThisLabel]
   UpdateTip("Set" + A_ThisLabel ": " + LogOptions[A_ThisLabel])
-  If (buttonToggled["Pause"]) 
-    Redirect%A_ThisLabel%(LogOptions[A_ThisLabel])
 Return
 
 LoadPlayOptions() {
@@ -653,3 +679,22 @@ SetNewRecordPath() {
     LatestSelectName := NewRecordName
   }
 }
+
+hasValue(list, item, del:=",") {
+  if (item = "")
+    Return False
+	haystack:=del
+	if !IsObject(list)
+		haystack.= list del
+	else
+		for k,v in list
+			haystack.= v del	
+	Return !!InStr(del haystack del, del item del)
+}
+
+ExitHandler: 
+  if (buttonToggled["Record"]) ; Revert to State 1
+    PostLoggerMessage(WM_OFF_LOGGER)
+  UpdateSettings()  
+  PID := DllCall("GetCurrentProcessId")
+  RunWait, taskkill /pid %PID%,, hide

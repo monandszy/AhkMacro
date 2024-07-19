@@ -1,0 +1,19 @@
+(()
+  global WorkDir := "Macros"
+  global NewRecordName := "TestRecord"
+  global RecordFolderPath := A_ScriptDir . "\" . WorkDir "\"
+  global PlaySpeed := 1.0
+  global LogOptions := ({
+    (Join  
+    "LogColor": False,
+    "LogSleep": True,
+    "LogKeyboard": True,
+    "LogMouse": True,
+    "LogWindow": False
+  )})
+  global TimingMode := "Precise" 
+  global FileSaveMode := "Override"
+  global NewRecordPath := "Null"
+  global LatestSelectPath := "Null"
+  global LatestSelectName := "Null"
+)
