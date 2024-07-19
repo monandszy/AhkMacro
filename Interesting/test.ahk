@@ -1,7 +1,6 @@
 #SingleInstance, force
 ; Define the path you want to loop over
 path := "C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro"
-
 ; Loop over directories in the specified path
 Loop, Files, %path%\*.*, D
 {
@@ -12,5 +11,5 @@ Loop, Files, %path%\*.*, D
     dirName := A_LoopFileName
 
     ; Perform an action with each directory (e.g., display a message box)
-    MsgBox, Directory found: %dirName% %dirPath% 
+    ; MsgBox, Directory found: %dirName% %dirPath% 
 }

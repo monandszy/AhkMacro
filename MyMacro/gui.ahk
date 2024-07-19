@@ -1,8 +1,5 @@
-; If not A_IsAdmin ; Needed to Edit Files
-;   Run *RunAs "%A_ScriptFullPath%"
 #SingleInstance, force
 #NoEnv
-#IncludeAgain %A_ScriptDir%\settings.ahk
 
 SetBatchLines, -1
 Thread, NoTimers
@@ -10,10 +7,19 @@ DetectHiddenWindows, On
 SetTitleMatchMode, 2
 DetectHiddenText, On
 SetWorkingDir %A_ScriptDir%
+
+;----------------------------------------------------
+global GuiLogFile := A_ScriptDir . "/.Logs/GuiLog.log"
+FileDelete %GuiLogFile%
+Log(name, text) {
+  FileAppend, %name%:[%text%]`n, %GuiLogFile%,
+}
+Log("DateTime", A_Now)
 ;----------------------------------------------------
 ; Static Options
 ;----------------------------------------------------
 global EditorPath := "C:\Program Files\VSCodium\VSCodium.exe"  
+global SettingsPath := A_ScriptDir . "/settings"
 global UpdateLatestSelectOnRecord := True
 global isTipEnabled := True
 ;----------------------------------------------------
@@ -23,43 +29,62 @@ global WorkDir
 global NewRecordName
 global RecordFolderPath
 global PlaySpeed
-global TimingMode
 global FileSaveMode
 global NewRecordPath
 global LatestSelectPath
 global LatestSelectName
-global LogOptions
+global isLogKeyboard 
+global isLogMouse 
+global isLogSleep 
+global isLogWindow 
+global isLogColor 
+global isAggregateMode 
+global isPreciseMode 
+global isAppendSaveMode
+global isOverrideSaveMode
+global isNewSaveMode
+LoadSettings()
 
-UpdateSettings() {
-  NewSettings = 
-  (
-  global WorkDir := "%WorkDir%"
-  global NewRecordName := "%NewRecordName%"
-  global RecordFolderPath := "%RecordFolderPath%"
-  global PlaySpeed := %PlaySpeed%
-  global TimingMode := "%TimingMode%"
-  global FileSaveMode := "%FileSaveMode%"
-  global NewRecordPath := "%NewRecordPath%"
-  global LatestSelectPath := "%LatestSelectPath%"
-  global LatestSelectName := "%LatestSelectName%"
-  )
-  NewSettings .= "`nglobal LogOptions := ({"
-  NewSettings .= "`n(Join"
-  For, i,v in LogOptions
+LoadSettings() {
+  Loop, Read, %SettingsPath%
   {
-    NewSettings .= "`n" . i . ":" . v . ","
+    option := StrSplit(A_LoopReadLine, ":",,2)
+    label := option[1]
+    ; Log("labelInit", label)
+    %label% := option[2]
   }
-  StringTrimRight, NewSettings, NewSettings, 1
-  NewSettings .= "`n)})"
-
-  FileDelete, settings.ahk
-  FileAppend, %NewSettings%, settings.ahk
+}
+UpdateSettings() {
+NewSettings = 
+(
+WorkDir:%WorkDir%
+NewRecordName:%NewRecordName%
+RecordFolderPath:%RecordFolderPath%
+PlaySpeed:%PlaySpeed%
+NewRecordPath:%NewRecordPath%
+LatestSelectPath:%LatestSelectPath%
+LatestSelectName:%LatestSelectName%
+MainGuiHwnd:%MainGuiHwnd%
+isLogKeyboard:%isLogKeyboard%
+isLogMouse:%isLogMouse%
+isLogSleep:%isLogSleep%
+isLogWindow:%isLogWindow%
+isLogColor:%isLogColor%
+isAggregateMode:%isAggregateMode%
+isPreciseMode:%isPreciseMode%
+isAppendSaveMode:%isAppendSaveMode%
+isOverrideSaveMode:%isOverrideSaveMode%
+isNewSaveMode:%isNewSaveMode%
+)
+  FileDelete, %SettingsPath%
+  FileAppend, %NewSettings%, %SettingsPath%
 }
 ;----------------------------------------------------
 ; Util Options
 ;----------------------------------------------------
-global SaveModes := "New,Override,Append"
+global FileSaveModes := "New,Override,Append"
 global TimingModes = "Precise,Aggregate" 
+global LogOptions := "Color,Keyboard,Mouse,Sleep,Window"
 global IsRecordingPlaying := False
 global RecentTip := ""
 global TipBackup := ""
@@ -82,40 +107,34 @@ global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
 global WM_PAUSE_LOGGER := 0x0403
 global WM_RESUME_LOGGER := 0x0404
-global WM_UPDATE_LOG_OPTIONS := 0x0405
-
-Run, %A_ScriptDir%/Logger.ahk,,, loggerPID
-Sleep, 200
+global WM_TEST_LOGGER := 0x0405
 
 global LoggerPath := A_ScriptDir . "\Logger.ahk"
-WinGet, scriptPID, PID, % LoggerPath
-global LoggerHwnd := WinExist("ahk_pid" . scriptPID)
-if (!FileExist(LoggerPath)) {
-  MsgBox, 4096, Error, Can't Find %LoggerPath% !
+WinGet, LoggerPID, PID, % LoggerPath
+if (LoggerPID = "") {
+  MsgBox, 4096, Error, LoggerPID is Null, Increase Sleep Timer
   Exit
 }
-else If (scriptPID = "") {
-  MsgBox, 4096, Error, Logger scriptPID is Null, Increase Sleep Timer
+; Log("LoggerPID", LoggerPID)
+global LoggerHwnd := WinExist("ahk_pid" . LoggerPID)
+if (LoggerHwnd + 0 = 0) {
+  MsgBox, 4096, Error, LoggerHwnd is Null, Increase Sleep Timer
   Exit
 }
+; Log("LoggerHwnd", LoggerHwnd)
+PostLoggerMessage(WM_TEST_LOGGER)
 
 PostLoggerMessage(ID) {
   PostMessage, ID, 0,0,, % "ahk_id" . LoggerHwnd
-  Log("PostLoggerMessage", ID . " " . ErrorLevel) 
+  ; Log("PostLoggerMessage", ID " " ErrorLevel " " LoggerHwnd) 
 }
-
-;----------------------------------------------------
-global GuiLogFile := A_ScriptDir . "/Log/GuiLog.log"
-FileDelete %GuiLogFile%
-Log(name, text) {
-  FileAppend, %name%:[%text%]`n, %GuiLogFile%,
-}
-Log("DateTime", A_Now)
 
 ;----------------------------------------------------
 Gui, Main: +AlwaysOnTop +ToolWindow -Caption
 Gui, Main: +HwndMain_gui_id
 guiHwnds["Main"] := Main_gui_id
+global MainGuiHwnd := Main_gui_id
+; Log("Main", Main_gui_id + 0)
 Gui, Main: Font, s11 
 Gui, Main: Margin, 0, 0
 
@@ -286,7 +305,8 @@ ProcessExist(PID) {
 Edit:
 global LatestSelectPath, LatestSelectName
   if (FileExist(LatestSelectPath)) {
-    Run, % """" EditorPath """ """ LatestSelectPath """"
+    val := """" EditorPath """ """ LatestSelectPath """"
+    Run, *RunAs %val%
       UpdateTip("Editing " LatestSelectName)
   } else {
     UpdateTip("File " LatestSelectName " does not exist")
@@ -445,9 +465,9 @@ LoadRecordOptions() {
   Gui, Record: Add, Edit, x0 w120 h20 vRecordInputText ToolTip, NewRecordName
   Gui, Record: Add, Button, x1 w0 h0 Hidden gSubmitRecord Default, 
   global IsOverride, IsNew, IsAppend
-  For i,mode in StrSplit(SaveModes, ",")
+  For i,mode in StrSplit(FileSaveModes, ",")
   {
-    isMode:= FileSaveMode = mode ? "Checked" : ""
+    isMode:= is%mode%SaveMode ? "Checked" : ""
     Gui, Record: Add, Checkbox, %isMode% vIs%mode% g%mode%, %mode% 
   }
 }
@@ -463,15 +483,15 @@ Return
 Append:
 New:
 Override:
-global FileSaveMode
-  For i,mode in StrSplit(SaveModes, ",")
+global FileSaveModes
+  is%A_ThisLabel%SaveMode := True
+  GuiControl, , Is%A_ThisLabel%, 1
+  UpdateTip("SetSaveMode: " . A_ThisLabel . ":" . is%A_ThisLabel%SaveMode)
+  For i,mode in StrSplit(FileSaveModes, ",")
   {
-    checkbox := Is . mode
-    if (mode = A_ThisLabel) {
-      FileSaveMode := A_ThisLabel
-      UpdateTip("SetSaveMode: " . FileSaveMode)
-    } else {
-      GuiControl, , %checkbox%, 0
+    If (mode != A_ThisLabel)  {
+      is%mode%SaveMode := False
+      GuiControl, , Is%mode%, 0
     }
   }
 Return
@@ -480,7 +500,7 @@ LoadPauseOptions() {
   global IsAggregate, IsPrecise
   For i,mode in StrSplit(TimingModes, ",")
   {
-    isMode:= TimingMode = mode ? "Checked" : ""
+    isMode:= is%mode%Mode ? "Checked" : ""
     Gui, Pause: Add, Checkbox, x1 %isMode% vIs%mode% g%mode%, %mode%Mode
   }
   
@@ -490,26 +510,25 @@ LoadPauseOptions() {
   Gui, Pause: Add, Edit, x+0 w45 h20 vPauseInputText Tooltip, %PlaySpeed%
   Gui, Pause: Add, Button, x+0 w20 h20 vIncreaseSpeed gIncreaseSpeed, +
   Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitSpeed Default, 
-  ; Gui, Pause: Add, Text, x+0 w50 vPlaySpeed, %A_Space%%PlaySpeed%%A_Space%
 
-  global isLogKeyboard, isLogControl, isLogSpecial, isLogMouse, isLogColor, isLogWindow, isLogSleep
-  For name, value in LogOptions {
-    isTrue:= value ? "Checked" : ""
-    Gui, Pause: Add, Checkbox, x1  %isTrue% vIs%name% g%name%, %name%
+  global isKeyboard, isMouse, isColor, isWindow, isSleep
+  For i, name in StrSplit(LogOptions, ",") {
+    isTrue:= isLog%name% ? "Checked" : ""
+    Gui, Pause: Add, Checkbox, x1  %isTrue% vIs%name% gLog%name%, Log%name%
   }
 }
 
 Precise:
 Aggregate:
-global TimingMode
+global TimingModes
+  is%A_ThisLabel%Mode := True
+  GuiControl, , Is%A_ThisLabel%, 1
+  UpdateTip("SetTimingMode: " . A_ThisLabel . ":" . is%A_ThisLabel%Mode)
   For i,mode in StrSplit(TimingModes, ",")
   {
-    checkbox := Is . mode
-    if (mode = A_ThisLabel) {
-      TimingMode := A_ThisLabel
-      UpdateTip("SetTimingMode: " . TimingMode)
-    } else {
-      GuiControl, , %checkbox%, 0
+    If (mode != A_ThisLabel)  {
+      is%mode%Mode := False
+      GuiControl, , Is%mode%, 0
     }
   }
 Return
@@ -552,7 +571,7 @@ Return
 
 LogSpeedChange() {
   If (!IsRecordingPlaying) {
-    ; Log new speed paramter (somehow alter file)
+    ; TODO Log new speed paramter (somehow alter selected file)
   }
 }
 
@@ -562,8 +581,8 @@ LogColor:
 LogWindow:
 LogSleep:
 global IsRecordingPlaying, LogOptions
-  LogOptions[A_ThisLabel] := !LogOptions[A_ThisLabel]
-  UpdateTip("Set" + A_ThisLabel ": " + LogOptions[A_ThisLabel])
+  is%A_ThisLabel% := !is%A_ThisLabel%
+  UpdateTip("Set" + A_ThisLabel ": " + is%A_ThisLabel%)
 Return
 
 LoadPlayOptions() {
@@ -611,7 +630,8 @@ LoadExitOptions() {
   Loop, Files, %A_ScriptDir%\*.*, D
   {
     dirName := A_LoopFileName
-    Gui, Exit: Add, Button, x0 h20 gChangeWorkDir, %dirName%
+    If (SubStr(dirName, 1, 1) != ".")
+      Gui, Exit: Add, Button, x0 h20 gChangeWorkDir, %dirName%
   }
 }
 
@@ -649,10 +669,10 @@ SetNewRecordPath() {
   if (NewRecordName = "Null" || NewRecordName = "") {
     NewRecordName := "Record_" . A_Now
   }
-  else if (FileSaveMode != "Override" && RegExMatch(NewRecordName, "Record_\d{12}")) {
+  else if (!isOverrideSaveMode && RegExMatch(NewRecordName, "Record_\d{12}")) {
     NewRecordName := "Record_" . A_Now
   }
-  else if (FileSaveMode = "New" && !RegExMatch(NewRecordName, "Record_\d{12}")) {
+  else if (isNewSaveMode && !RegExMatch(NewRecordName, "Record_\d{12}")) {
     highest:= 0
     Loop, %RecordFolderPath%\*.ahk
     {
@@ -668,7 +688,7 @@ SetNewRecordPath() {
     NewRecordName := NewRecordName "_" highest
   }
   
-  if (FileSaveMode = "Override" && FileExist(NewRecordPath)) {
+  if (isOverrideSaveMode && FileExist(NewRecordPath)) {
     FileDelete %NewRecordPath% 
   }
 

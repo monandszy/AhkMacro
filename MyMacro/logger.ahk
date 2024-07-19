@@ -2,7 +2,7 @@
 #Persistent
 #SingleInstance, force
 #NoEnv
-CoordMode, ToolTip
+; CoordMode, ToolTip
 
 SetBatchLines, -1
 DetectHiddenWindows on
@@ -11,140 +11,180 @@ Thread, NoTimers
 SetWorkingDir %A_ScriptDir%
 ; global Coord := "Screen"
 
-; global NewRecordFile = "TEST"
-global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11,F12"
+;----------------------------------------------------
+; Static Options
+;----------------------------------------------------
+global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11"
 global SpecialKeys := "NumpadLeft,NumpadRight,NumpadEnter,Home,End,PgUp,PgDn,Left,Right,Up,Down,Delete,Insert"
 global ControlKeys := "Alt,Control,Shift,Win"
-global MouseKeys := "LButton,RButton,MButton,XButton1,XButton2"
+global MouseVK = [1,2,4,5,6]
+global WheelVK = [156,157,158,159]
+global AggregateActionDelay := 100
+global LoggerLogFile = A_ScriptDir . "/.Logs/LoggerLog.log"
+global SettingsPath := A_ScriptDir . "/settings"
+;----------------------------------------------------
+; Loaded Options
+;----------------------------------------------------
+global WorkDir
+global NewRecordName
+global RecordFolderPath
+global PlaySpeed
+global FileSaveMode
+global NewRecordPath
+global LatestSelectPath
+global LatestSelectName
+global isLogKeyboard 
+global isLogMouse 
+global isLogSleep 
+global isLogWindow 
+global isLogColor 
+global isAggregateMode 
+global isPreciseMode 
+global isAppendSaveMode
+global isOverrideSaveMode
+global isNewSaveMode
+global MainGuiHwnd
+
+LoadSettings() {
+  Loop, Read, %SettingsPath%
+  {
+    option := StrSplit(A_LoopReadLine, ":",,2)
+    label := option[1]
+    %label% := option[2]
+  }
+}
+;----------------------------------------------------
+; Dynamic Options
+;----------------------------------------------------
 global PressedLog := []
 global LogArr := []
 global Aggregator := ""
-global AggregateActionDelay := 100
-global LoggerLogFile = A_ScriptDir . "/Log/LoggerLog.log"
-;----------------------------------------------------
-global LatestRecordName := "TestRecord"
-global FileSaveMode := "Override"
-global TimingMode := "Precise"
-global LogOptions := []
-; "LogColor,LogSleep,LogKeyboard,LogMouse,LogWindow,TimingMode,FileSaveMode,NewRecordPath"
-; global LogOptions := ({
-  ; (Join  
-  ; "LogColor": False,
-  ; "LogSleep": True,
-  ; "LogKeyboard": True,
-  ; "LogMouse": True,
-  ; "LogWindow": False,
-  ; "TimingMode": "",
-  ; "FileSaveMode": "",
-  ; "NewRecordPath": "",
-; )})
+global WheelAggregator := ""
+global previousWheel := ""
 ;----------------------------------------------------
 FileDelete %LoggerLogFile%
 Log(name, text) {
   FileAppend, %name%:[%text%]`n, %LoggerLogFile%,
 }
 Log("DateTime", A_Now)
-
-Unstuck() {
-  ; Sometimes it stops registering hotkeys, this helps for some reason..?
-}
-
 ;----------------------------------------------------
 global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
 global WM_PAUSE_LOGGER := 0x0403
 global WM_RESUME_LOGGER := 0x0404
-global WM_UPDATE_LOGGER := 0x0405
-global WM_BROADCAST := 0x0406
+global WM_TEST_LOGGER := 0x0405
 OnMessage(WM_ON_LOGGER, "RecordStart")
 OnMessage(WM_OFF_LOGGER, "RecordEnd")
 OnMessage(WM_PAUSE_LOGGER, "Pause")
 OnMessage(WM_RESUME_LOGGER, "Resume")
-OnMessage(WM_UPDATE_LOGGER, "UpdateLogOptions")
+OnMessage(WM_TEST_LOGGER, "Test")
 ;----------------------------------------------------
-
-UpdateLogOptions(wParam, lParam, msg, hwnd) {
-  ; Get the new options from wParam and lParam
-
-  ; Parse the new options and update LogOptions
-  Log("Update", wParam)
-  Log("Update", lParam)
-  Log("Update", msg)
-  ; Loop, Parse, newLogOptions, `n
-  ; {
-  ;     RegExMatch(A_LoopField, "(\w+):(\w+)", match)
-  ;     key := match1
-  ;     value := match2 = "True"
-  ;     LogOptions[key] := value
-  ; }
+Suspend, On
+RedirectLogKeyboard("On")
+RedirectLogMouse("On")
+Return
+;----------------------------------------------------
+Unstuck() {
+  ; For some reason this helps?
 }
-;----------------------------------------------------
+
+Test(wParam, lParam, msg, hwnd) {
+  Log("Recived!", hwnd)
+}
 
 RecordStart(wParam, lParam, msg, hwnd) {
-  ; Suspend, On
+  Log("Event","RecordStart")
+  LoadSettings()
+  Suspend, Off
   LogArr := []
   Aggregator := ""
-  ; RedirectLogKeyboard(LogOptions["LogKeyboard"])
-  ; RedirectLogMouse(LogOptions["LogMouse"])
-  
-  ; SetTimer, FlushLog, 5000 
-  ; Suspend, Off
-  ; SetTimer, LogWindow, %f%
-  ; if (f="On")
-  ;   Gosub, LogWindow
+  SetTimer, FlushLog, 5000 
 }
+; SetTimer, LogWindow, %f%
+; if (f="On")
+;   Gosub, LogWindow
 
 RecordEnd(wParam, lParam, msg, hwnd) {
-  ; RedirectLogKeyboard("Off")
-  ; RedirectLogMouse("Off")
-  ; If (TimingMode = "Aggregate")
-  ;   LogAggregator()
-  ; FlushLog()
-  ; SetTimer, FlushLog, Off 
-  ; Suspend, On
+  Log("Event","RecordEnd")
+  Suspend, On
+  If (isAggregateMode)
+    LogAggregator()
+  FlushLog()
+  SetTimer, FlushLog, Off 
 }
 
 Pause(wParam, lParam, msg, hwnd) {
+  Log("Event", "Pause")
   Suspend, On
   FlushLog()
   SetTimer, FlushLog, Off 
 }
 
 Resume(wParam, lParam, msg, hwnd) {
+  Log("Event","Resume")
+  LoadSettings()
   Suspend, Off
   SetTimer, FlushLog, 5000 
 }
 
 FlushLog() {
-  global saveMode, LatestRecordPath
+  global LogArr, NewRecordPath
+  MsgBox, % NewRecordPath
+  if (!isAppendSaveMode) {
+    content =
+    (
+#SingleInstance force
+#NoEnv
+ps := %PlaySpeed% `n
+    )
+  }
+  content .= "Loop, 1 `n {`n"
   for i, line in LogArr 
   {
     content .= line . "`n"
+    Log("Flush", line)
   }
-  Log("Flush","")
-  MsgBox, %content%
-  FileAppend, %content%, %LatestRecordPath%
+  content .= "}"
+  FileAppend, %content%, %NewRecordPath%
   LogArr := []
 }
 
 RedirectLogMouse(isEnabled) {
   ; VK 1,2,4,5,6
-  For i, key in StrSplit(MouseKeys, ",") {
-    vkey := Format("vk{:X}", GetKeyVK(key))
-    Log("vkey", vkey)
+  For i, key in MouseVK {
+    vkey := Format("vk{:X}", key)
     Hotkey, % "~*" vkey, LogDownMouseKey, %isEnabled% UseErrorLevel
     Hotkey, % "~*" vkey " Up", LogUpMouseKey, %isEnabled% 
+  }
+  For i, key in WheelVK {
+    vkey := Format("vk{:X}", key)
+    Hotkey, % "~*" vkey, LogWheel, %isEnabled% UseErrorLevel
+  }
+}
+
+LogWheel() {
+  If (!isLogMouse)
+    Return
+  vksc := SubStr(A_ThisHotkey, 3)
+  key := GetKeyName(vksc)
+  if (isPreciseMode) {
+    LogData("Send," "{" key "}")
+  } else if (isAggregateMode) {
+    if !(previousWheel = key) {
+      LogWheelAggregator()
+      previousWheel := key
+    } 
+    WheelAggregator++
   }
 }
 
 RedirectLogKeyboard(isEnabled) {
-  vkey := Format("vk{:X}", 3) ; Missing VK3
-  Hotkey, % "~*" vkey, LogDownControlKey, %isEnabled% UseErrorLevel
-  Hotkey, % "~*" vkey " Up", LogUpControlKey, %isEnabled% UseErrorLevel
-
-  Loop, 248 ; 254 VK exist total, skips mouse
+  Loop, 256 ; 256 VK exist total, skips mouse
   {
-    vkey := Format("vk{:X}", A_Index + 6)
+    if (hasValue(MouseVK, A_Index) || hasValue(WheelVK, A_Index)) {
+      continue ; Skip mouse
+    }
+    vkey := Format("vk{:X}", A_Index)
     key := GetKeyName(vkey)
     If (!hasValue(ExcludedKeys, key) && key != "") {
       if(hasValue(ControlKeys, SubStr(key, 2))) {
@@ -168,9 +208,7 @@ RedirectLogKeyboard(isEnabled) {
 }
 
 LogUpHotKey() {
-global TimingMode
-  Unstuck()
-  If (TimingMode != "Precise")
+  If (!isLogKeyboard || !isPreciseMode)
     Return
   vksc := SubStr(A_ThisHotkey, 3, -3)
   key := GetKeyName(vksc)
@@ -179,18 +217,19 @@ global TimingMode
 }
 
 LogHotKey() {
-global TimingMode
-  Unstuck()
+  If (!isLogKeyboard)
+    Return
   vksc := SubStr(A_ThisHotkey, 3)
   key := GetKeyName(vksc)
   ; Log("KeyDown", A_ThisHotkey " " vksc " " key)
-  if(TimingMode = "Precise") {
+  if(isPreciseMode) {
     If (PressedLog[vksc] = "Down") 
       Return
     SendPreciseKey("Down", vksc, key)
     Return
   }
-  else if(TimingMode = "Aggregate") {
+  else if(isAggregateMode) {
+    LogWheelAggregator()
     if (StrLen(key) = 1 && key~="\w") {
       Aggregator := Aggregator . key
       Return ; Collect Words until interrupted
@@ -210,7 +249,9 @@ SendPreciseKey(state, vksc, key) {
 
 ; Controll keys always in Precise mode
 LogDownControlKey() {
-  If (TimingMode = "Aggregate")
+  If (!isLogKeyboard)
+    Return
+  If (isAggreateMode)
     LogAggregator()
   vksc := SubStr(A_ThisHotkey, 3)
   key := GetKeyName(vksc)
@@ -221,7 +262,9 @@ LogDownControlKey() {
 }
 
 LogUpControlKey() {
-  If (TimingMode = "Aggregate")
+  If (!isLogKeyboard)
+    Return
+  If (isAggreateMode)
     LogAggregator()
   vksc := SubStr(A_ThisHotkey, 3, -3)
   key := GetKeyName(vksc)
@@ -234,40 +277,35 @@ LogAggregator() {
     LogData("Send, " + Aggregator)
     Aggregator := ""
   }
+  LogWheelAggregator()
 }
 
-LogData(data) {
-  static LastLogTime
-  cTime := A_TickCount
-  Delay := (LastLogTime ? cTime-LastLogTime : 0), LastLogTime := cTime
-  i:=LogArr.MaxIndex(), 
-  If (TimingMode = "Aggregate") {
-    LogArr.Push("  Sleep, " . AggregateActionDelay . " //ps")  
-  } else if (TimingMode = "Precise") {
-    LogArr.Push("  Sleep, " . Delay . " //ps")
+LogWheelAggregator() {
+  If (WheelAggregator > 0) {
+    LogData("Loop, " WheelAggregator "`n  Send, {" previousWheel "}")
+    WheelAggregator := 0
+    previousWheel := ""
   }
-  LogArr.Push(data)
 }
 
 LogUpMouseKey() {
-  Unstuck()
-  If (TimingMode != "Precise")
+  If (!isLogMouse || !isPreciseMode)
     Return
   vksc := SubStr(A_ThisHotkey, 3, -3)
   key := GetKeyName(vksc)
   clickType := SubStr(key,1,1)
-  Log("LogUpMouseKey", clickType)
   SendMouseKey("U", vksc, clickType)
 }
 
 LogDownMouseKey() {
-  Unstuck()
+  If (!isLogMouse)
+    Return
+  state := isPreciseMode ? "D" : ""
   vksc := SubStr(A_ThisHotkey, 3)
   key := GetKeyName(vksc)
   If (PressedLog[vksc] = "D") 
     Return
   clickType := SubStr(key,1,1)
-  state := TimingMode = "Precise" ? "D" : ""
   SendMouseKey(state, vksc, clickType)
 }
 
@@ -275,9 +313,13 @@ SendMouseKey(state, vksc, clickType) {
   PressedLog[vksc] := state
   CoordMode, Mouse, %CoordMode%
   MouseGetPos, X, Y, windowHwnd
-  If (id = guiHwnds["Main"])
+  GuiControl, Disable, %windowHwnd%
+  ControlGetPos, X, Y, w, h, , ahk_id %windowHwnd%
+  If (windowHwnd = MainGuiHwnd) {
     Return
+  }
   formattedKey := clickType ", " X ", " Y ",,, " state
+  LogData("MouseClick," . formattedKey)
 }
 
 ; LogWindow() {
@@ -311,6 +353,22 @@ SendMouseKey(state, vksc, clickType) {
 ;   else
 ;     Logg(s)
 ; }
+
+LogData(data) {
+  if(isLogSleep) {
+    static LastLogTime
+    cTime := A_TickCount
+    Delay := (LastLogTime ? cTime-LastLogTime : 0), LastLogTime := cTime
+    If (isAggregateMode) {
+      Log("AD", AggregateActionDelay)
+      LogArr.Push("Sleep, " AggregateActionDelay " //ps")  
+    } else if (isPreciseMode) {
+      Log("D", Delay)
+      LogArr.Push("Sleep, " Delay " //ps")
+    }
+  }
+  LogArr.Push(data)
+}
 
 
 ; checks if item exists in a string

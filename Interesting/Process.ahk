@@ -12,7 +12,7 @@ ReloadAllAhkScripts() {
         {
             continue
         }
-        SendMessage, 0x0405, 65303,,, % "ahk_id" . hwnd
+        PostMessage, 0x0405, 65303,,, % "ahk_id" . hwnd
         MsgBox, % hwnd . " " . ErrorLevel
     }
     Reload
