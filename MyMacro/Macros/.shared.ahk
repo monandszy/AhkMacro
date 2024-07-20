@@ -1,2 +1,1 @@
-#Requires AutoHotkey v2.0
-
+global MainGuiHwnd := 0x45033e

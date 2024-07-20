@@ -9,7 +9,7 @@ DetectHiddenText, On
 SetWorkingDir %A_ScriptDir%
 
 ;----------------------------------------------------
-global GuiLogFile := ".Logs/GuiLog.log"
+global GuiLogFile := ".Logs\GuiLog.log"
 FileDelete %GuiLogFile%
 Log(name, text) {
   FileAppend, %name%:[%text%]`n, %GuiLogFile%,
@@ -46,6 +46,7 @@ global isPreciseMode
 global isAppendSaveMode
 global isOverrideSaveMode
 global isNewSaveMode
+global CoordinateMode
 
 LoadSettings() {
   Loop, Read, %SettingsPath%
@@ -78,6 +79,8 @@ isPreciseMode:%isPreciseMode%
 isAppendSaveMode:%isAppendSaveMode%
 isOverrideSaveMode:%isOverrideSaveMode%
 isNewSaveMode:%isNewSaveMode%
+SharedPath:%SharedPath%
+CoordinateMode:%CoordinateMode%
 )
   FileDelete, %SettingsPath%
   FileAppend, %NewSettings%, %SettingsPath%
@@ -86,6 +89,7 @@ isNewSaveMode:%isNewSaveMode%
 ; Util Options
 ;----------------------------------------------------
 global FileSaveModes := "New,Override,Append"
+global CoordinateModes := "Screen,Window"
 global TimingModes = "Precise,Aggregate" 
 global LogOptions := "Color,Keyboard,Mouse,Sleep,Window"
 global IsRecordingPlaying := False
@@ -103,6 +107,7 @@ global buttonToggled := []
 global optionToggled := []
 global buttonEnabled := []
 global DestructionBlock
+global SharedPath := A_ScriptDir "\Macros\.shared.ahk"
 ;----------------------------------------------------
 global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
@@ -110,6 +115,8 @@ global WM_PAUSE_LOGGER := 0x0403
 global WM_RESUME_LOGGER := 0x0404
 global WM_TEST_LOGGER := 0x0405
 global WM_PLAY_SPEED_M := 0x040A
+global WM_PLAY_STOP := 0x040B
+OnMessage(WM_PLAY_STOP, "ScriptPlayEnd")
 
 global LoggerPath := "Logger.ahk"
 WinGet, LoggerPID, PID, % LoggerPath
@@ -134,9 +141,14 @@ PostLoggerMessage(ID) {
 ;----------------------------------------------------
 Gui, Main: +AlwaysOnTop +ToolWindow -Caption
 Gui, Main: +HwndMain_gui_id
-guiHwnds["Main"] := Main_gui_id
 global MainGuiHwnd := Main_gui_id
 ; Log("Main", Main_gui_id + 0)
+FileDelete, %SharedPath%
+shared =
+(
+  global MainGuiHwnd := %MainGuiHwnd%
+)
+FileAppend, %shared%, %SharedPath%
 Gui, Main: Font, s11 
 Gui, Main: Margin, 0, 0
 
@@ -208,6 +220,7 @@ Record:
     buttonToggled["Record"] := False
     GuiControl, Main: , Record, [F1]Record
     EnableMainButton("Play")
+    EnableMainButton("Edit")
     EnableMainButton("Exit")
     DisableMainButton("Pause")
     UpdateTip("Saved " + NewRecordName)
@@ -220,6 +233,7 @@ Record:
     buttonToggled["Record"] := True
     GuiControl, Main: , Record, [F1]Stop
     DisableMainButton("Play")
+    DisableMainButton("Edit")
     DisableMainButton("Exit")
     EnableMainButton("Pause")
     UpdateTip("Recording to " + NewRecordName)
@@ -233,6 +247,7 @@ Pause:
     If (buttonToggled["Record"]) {
       PostLoggerMessage(WM_PAUSE_LOGGER)
     } else if (buttonToggled["Play"]) {
+      Log("POST", "")
       PostPlayToggleMessage()
     }
     IsRecordingPlaying := False
@@ -261,9 +276,24 @@ ResumeButton() {
   GuiControl, Main: , Pause, [F2]Pause
 }
 
+ScriptPlayEnd(wParam, lParam, msg, hwnd) {
+  PlayEnd()
+} 
+
+PlayEnd() {
+  ResumeButton()
+  IsRecordingPlaying := False
+  buttonToggled["Play"] := False
+  GuiControl, Main: , Play, [F3]Play
+  EnableMainButton("Record")
+  EnableMainButton("Exit")
+  DisableMainButton("Pause")
+  UpdateTip("Finished: " PlayTitle)
+}
+
 Play:
   if (buttonToggled["Play"]) { ; Revert to State 1
-    PlayEnd()
+    PlayStop()
     if (buttonToggled["Pause"]) 
       ResumeButton()
     IsRecordingPlaying := False
@@ -292,8 +322,12 @@ Play:
 Return 
 
 PostPlayToggleMessage() {
-  PostMessage, 0x111, 65306,0,, % "ahk_id" PlayingHwnd
+  DetectHiddenWindows, On
+  WM_COMMAND := 0x0111
+  ID_FILE_PAUSE := 65403
+  PostMessage, WM_COMMAND, ID_FILE_PAUSE,,, % "ahk_id" PlayingHwnd
   Log("PostPlayToggleMessage", PlayingHwnd " " ErrorLevel)
+  MsgBox, PostPlayToggleMessage %ErrorLevel%
 }
 
 PostSpeedMultiplier() {
@@ -305,23 +339,18 @@ PostSpeedMultiplier() {
 }
 
 PlayStart() {
+  DetectHiddenWindows, On
   global PlayTitle, PlayingPID, PlayingHwnd
   PlayTitle := LatestSelectName
+  MsgBox, % LatestSelectPath
   Run, %LatestSelectPath%,,, OutputPID
-  SetTimer, CheckPlay, 1000
+  SetTimer, CheckPlay, 1000 ; In case of an premature end
   Sleep, 200
   WinGet, PlayingPID, PID, % LatestSelectPath
   PlayingHwnd := WinExist("ahk_pid" PlayingPID)
-  
-  if (PlayingPID = "") {
-    MsgBox, 4096, Error, PlayingPID is Null, Dynamic Speed Disabled
-  }
-  if (PlayingHwnd + 0 = 0) {
-    MsgBox, 4096, Error, PlayingHwnd is Null, Dynamic Speed Disabled
-  }
 }
 
-PlayEnd() {
+PlayStop() {
   SetTimer, CheckPlay, Off
   Process, Close, %PlayingPID%
 }
@@ -332,8 +361,7 @@ global PlayingPID
   if (Exists)  {
     Return
   } else {
-    Gosub, Play ; Toggle Stop
-    UpdateTip("Finished: " PlayTitle)
+    PlayEnd()
   }
 Return
 
@@ -425,8 +453,9 @@ if (!IsRecordingPlaying) {
 }
 Return
 
+; Do not try to understand how this works
 OpenClickOptionGui(title) {
-  Log("Clicklabel", title)
+  ; Log("Clicklabel", title)
   Hwnd := guiHwnds[title]
   isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 200 ; byWM (if not passed)
   if (!isHiddenbyWM || !guiHwnds[title] || !optionToggled[label]) {  ; If passed
@@ -440,8 +469,9 @@ OpenClickOptionGui(title) {
   } 
 }
 
+; This too, leave, please...
 OpenKeyOptionGui(title) {
-  Log("Keylabel", title)
+  ; Log("Keylabel", title)
   Hwnd := guiHwnds[title]
   isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 100 ; byWM (if not passed)
   DetectHiddenWindows, Off
@@ -487,11 +517,11 @@ LoadOptionsGui(title) {
 ; Event handler to close the GUI when it loses focus
 WM_ACTIVATE(wParam, lParam, msg, Hwnd) {
   Hwnd:= Format("0x{:X}", Hwnd)
-  if(Hwnd != guiHwnds["Main"]) {
-    Log("HwndWM", Hwnd)
+  if(Hwnd != MainGuiHwnd) {
+    ; Log("HwndWM", Hwnd)
     if (wParam = 0) {
       If (DestructionBlock != Hwnd) {
-        Log("Destroy", DestructionBlock)
+        ; Log("Destroy", DestructionBlock)
         Gui, Destroy
         lastWMHideTime[Hwnd] := A_TickCount
       }
@@ -510,12 +540,34 @@ LoadRecordOptions() {
     isMode:= is%mode%SaveMode ? "Checked" : ""
     Gui, Record: Add, Checkbox, %isMode% vIs%mode% g%mode%, %mode% 
   }
+  global IsScreen, IsWindow
+  For i,mode in StrSplit(CoordinateModes, ",")
+    {
+      isMode := CoordinateMode = mode ? "Checked" : ""
+      Gui, Record: Add, Checkbox, %isMode% vIs%mode% g%mode%, %mode%Mode 
+    }
 }
+
+Screen:
+Window:
+  CoordinateMode := A_ThisLabel
+  GuiControl, , Is%CoordinateMode%, 1
+  UpdateTip("SetCoordinateMode: " CoordinateMode)
+  For i,mode in StrSplit(CoordinateModes, ",")
+  {
+    If (mode != CoordinateMode)  {
+      GuiControl, , Is%mode%, 0
+    }
+  }
+Return
 
 SubmitRecord:
 global NewRecordName
   GuiControlGet, inputText, , RecordInputText
-  NewRecordName = %inputText%
+  If (inputText = "")
+    NewRecordName := "Record_" A_Now
+  else 
+    NewRecordName = %inputText%
   UpdateTip("LatestNewRecordName: " NewRecordName)
   Gui, Record: Hide
 Return
@@ -549,14 +601,14 @@ LoadPauseOptions() {
   Gui, Pause: Add, Button, x+0 w20 h20 vDecreasePSRecord gDecreasePSRecord, -
   Gui, Pause: Add, Edit, x+0 w40 h20 vPSRecordInputText Tooltip, %PlaySpeedRecord%
   Gui, Pause: Add, Button, x+0 w20 h20 vIncreasePSRecord gIncreasePSRecord, +
-  Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitPSRecord Default, 
+  Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitPS Default, 
 
   global PSMultiplierInputText, DecreasePSMultiplier, IncreasePSMultiplier
   Gui, Pause: Add, Text, x0 w1, SpdM:
   Gui, Pause: Add, Button, x+0 w20 h20 vDecreasePSMultiplier gDecreasePSMultiplier, -
   Gui, Pause: Add, Edit, x+0 w40 h20 vPSMultiplierInputText Tooltip, %PlaySpeedMultiplier%
   Gui, Pause: Add, Button, x+0 w20 h20 vIncreasePSMultiplier gIncreasePSMultiplier, +
-  Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitPSMultiplier Default, 
+  Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitPS Default, 
 
   global isKeyboard, isMouse, isColor, isWindow, isSleep
   For i, name in StrSplit(LogOptions, ",") {
@@ -591,7 +643,7 @@ global PlaySpeedRecord, PlaySpeedMultiplier
     value--
   else if (value > 0.2)
     value := value - 0.1
-  value := RTrim(value, ".0")
+  value := RTrim(RTrim(inputText, "0"), ".")
   %label% := value
   GuiControl,, PS%mode%InputText, %value%
 Return
@@ -606,23 +658,24 @@ global PlaySpeedRecord, PlaySpeedMultiplier
     value := value + 0.1
   else 
     value++
-  value := RTrim(value, ".0")
+  value := RTrim(RTrim(inputText, "0"), ".")
   %label% := value
   GuiControl,, PS%mode%InputText, %value%
 Return
 
-SubmitPSRecord:
-SubmitPSMultiplier:
+SubmitPS:
 global PlaySpeedRecord, PlaySpeedMultiplier
-  mode := StrReplace(A_ThisLabel, "SubmitPS")
-  GuiControlGet, inputText, , PS%mode%InputText
+  GuiControlGet, inputText, , PSRecordInputText
   if (RegExMatch(inputText, "^\d+(\.\d+)?$") && inputText > 0) {
-    value := RTrim(inputText, ".0")
-    PlaySpeed%mode% = %value%
-    UpdateTip("SetPlaySpeed: Record:" PlaySpeedRecord " Multiplier:" PlaySpeedMultiplier)
-  } else {
-    UpdateTip("InvalidPlaySpeed" mode ": " inputText)
+    inputText := inputText + 0.0
+    PlaySpeedRecord := RTrim(RTrim(inputText, "0"), ".")
   }
+  GuiControlGet, inputText, , PSMultiplierInputText
+  if (RegExMatch(inputText, "^\d+(\.\d+)?$") && inputText > 0) {
+    inputText := inputText + 0.0
+    PlaySpeedMultiplier := RTrim(RTrim(inputText, "0"), ".")
+  }
+  UpdateTip("SetPlaySpeed: Record:" PlaySpeedRecord " Multiplier:" PlaySpeedMultiplier)
 Return
 
 LogKeyboard:
@@ -673,13 +726,13 @@ global RecordFolderPath, LatestEditPath
 Return
 
 LoadExitOptions() {
-  global ExitInputText
+  global WorkDirInputText
   ; Gui, Exit: Add, Text, x0, %A_Space%WorkDir:%A_Space%
   ; Gui, Exit: Add, Text, x+0 w50 vWorkDir, %WorkDir%%A_Space%
   
-  Gui, Exit: Add, Edit, x0 w120 h20 vExitInputText Tooltip, %WorkDir%
+  Gui, Exit: Add, Edit, x0 w120 h20 vWorkDirInputText Tooltip, %WorkDir%
   Gui, Exit: Add, Button, x+0 w0 h0 Hidden gSetWorkDir Default, 
-  Loop, Files, Macros/*.*, D
+  Loop, Files, Macros\*.*, D
   {
     dirName := A_LoopFileName
     If (SubStr(dirName, 1, 1) != ".")
@@ -689,9 +742,9 @@ LoadExitOptions() {
 
 SetWorkDir:
 global WorkDir
-  GuiControlGet, inputText, , ExitInputText
+  GuiControlGet, inputText, , WorkDirInputText
   WorkDir := inputText
-  RecordFolderPath := "Macros/" WorkDir "/"
+  RecordFolderPath := A_ScriptDir "\Macros\" WorkDir "\"
   IfNotExist, %RecordFolderPath%
       FileCreateDir, %RecordFolderPath%
   UpdateTip("SetRecordFolder: " WorkDir)
@@ -699,9 +752,10 @@ Return
 
 ChangeWorkDir:
 global WorkDir	
-  GuiControlGet, ButtonText, FocusV  ; Get the text of the clicked button
+  GuiControlGet, ButtonText, FocusV 
   WorkDir := ButtonText
-  GuiControl,, WorkDir, %WorkDir%
+  RecordFolderPath := A_ScriptDir "\Macros\" WorkDir "\"
+  GuiControl,, WorkDirInputText, %WorkDir%
 Return
 
 F10::
@@ -741,18 +795,19 @@ SetNewRecordPath() {
   }
   
   if (isOverrideSaveMode && FileExist(NewRecordPath)) {
-    overrideBackupPath := "Macros/override_backup"
+    overrideBackupPath := "Macros\override_backup"
     FileDelete %overrideBackupPath% 
     FileMove, %NewRecordPath%, %overrideBackupPath%
   }
 
-  NewRecordPath := "Macros/" WorkDir "/" NewRecordName ".ahk"
+  NewRecordPath := A_ScriptDir "\Macros\" WorkDir "\" NewRecordName ".ahk"
 
   if (UpdateLatestSelectOnRecord) {
     LatestSelectPath := NewRecordPath
     LatestSelectName := NewRecordName
   }
 }
+
 
 hasValue(list, item, del:=",") {
   if (item = "")
@@ -771,4 +826,4 @@ ExitHandler:
     PostLoggerMessage(WM_OFF_LOGGER)
   UpdateSettings()  
   PID := DllCall("GetCurrentProcessId")
-  RunWait, taskkill /pid %PID%,, hide
+  RunWait, taskkill \pid %PID%,, hide

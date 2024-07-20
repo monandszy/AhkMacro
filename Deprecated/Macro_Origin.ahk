@@ -30,7 +30,7 @@ SetTitleMatchMode, 2
 DetectHiddenWindows, On
 ;--------------------------
 EditorPath:="C:\Program Files\VSCodium\VSCodium.exe"  
-LogFile:="C:\Users\Name\Desktop\Temp\Record.txt"
+LogFile:="C:\Users\Name\Desktop\Temp\Record.ahk"
 UsedKeys:="F1,F2,F3,F4,F5,F6"
 Play_Title:=RegExReplace(LogFile,".*\\") " ahk_class AutoHotkey"
 ;--------------------------

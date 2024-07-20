@@ -10,7 +10,11 @@ sR := 1
 Sleep, 200
 Loop, 1
 {
+Sleep, 0 //(sR*sM)
+  tt = logger.ahk - AutoHotKey - VSCodium
+  WinWait, %tt%
+  IfWinNotActive, %tt%,, WinActivate, %tt%
 }
 PostMessage, 0x040B, 0,0,, % "ahk_id" MainGuiHwnd
 ExitApp
-; RecordingTime: 2359
+; RecordingTime: 5656

@@ -2,14 +2,12 @@
 #Persistent
 #SingleInstance, force
 #NoEnv
-; CoordMode, ToolTip
 
 SetBatchLines, -1
 DetectHiddenWindows on
 SetTitleMatchMode, 2
 Thread, NoTimers
 SetWorkingDir %A_ScriptDir%
-; global Coord := "Screen"
 
 ;----------------------------------------------------
 ; Static Options
@@ -22,7 +20,7 @@ global WheelVK = [156,157,158,159]
 global AggregateLogDelay := 200
 global LoggerLogFile = ".Logs/LoggerLog.log"
 global SettingsPath := "settings"
-global SharedPath := A_ScriptDir "/Macros/.shared.ahk" 
+global LogColorSleep := 100
 ;----------------------------------------------------
 ; Loaded Options
 ;----------------------------------------------------
@@ -41,6 +39,8 @@ global isAppendSaveMode
 global isOverrideSaveMode
 global isNewSaveMode
 global MainGuiHwnd
+global SharedPath
+global CoordinateMode
 
 LoadSettings() {
   Loop, Read, %SettingsPath%
@@ -56,8 +56,12 @@ LoadSettings() {
 global PressedLog := []
 global LogArr := []
 global Aggregator := ""
-global WheelAggregator := ""
+global WheelAggregator := 0
 global previousWheel := ""
+global KeyboardAggregator := 0
+global previousKey := ""
+global StartTime
+global ElapsedTime
 ;----------------------------------------------------
 FileDelete %LoggerLogFile%
 Log(name, text) {
@@ -90,81 +94,98 @@ Test(wParam, lParam, msg, hwnd) {
 }
 
 RecordStart(wParam, lParam, msg, hwnd) {
-  Log("Event","RecordStart")
+  StartTime := A_TickCount
   LoadSettings()
   InitFile()
   Suspend, Off
   LogArr := []
   Aggregator := ""
   SetTimer, FlushLog, 5000 
+  if (isLogWindow) {
+    SetTimer, LogWindow, 3000 
+  }
 }
-; SetTimer, LogWindow, %f%
-; if (f="On")
-;   Gosub, LogWindow
 
 RecordEnd(wParam, lParam, msg, hwnd) {
-  Log("Event","RecordEnd")
+  ElapsedTime += A_TickCount - StartTime
   Suspend, On
-  If (isAggregateMode)
+  If (isAggregateMode) {
     LogAggregator()
+    LogKeyAggregator()
+  }
   FlushLog()
+  SetTimer, LogWindow, Off
   SetTimer, FlushLog, Off 
   CloseFile()
 }
 
 Pause(wParam, lParam, msg, hwnd) {
-  Log("Event", "Pause")
+  ElapsedTime += A_TickCount - StartTime
   Suspend, On
   FlushLog()
+  SetTimer, LogWindow, Off
   SetTimer, FlushLog, Off 
 }
 
 Resume(wParam, lParam, msg, hwnd) {
-  Log("Event","Resume")
-  SpdRBackup := %PlaySpeedRecord%
-  MsgBox, % SpdRBackup
+  StartTime := A_TickCount
+  SpdRBackup := PlaySpeedRecord
   LoadSettings()
   if (SpdRBackup != PlaySpeedRecord) {
-    LogData("SpdR := " PlaySpeedRecord)
+    LogData("sR := " PlaySpeedRecord)
   }
   Suspend, Off
   SetTimer, FlushLog, 5000 
+  if (isLogWindow) {
+    SetTimer, LogWindow, 3000 
+  }
 }
 
 InitFile() {
+content = 
+(
+  ; Recorded: %A_Now%
+  CoordMode, Mouse, %CoordinateMode%
+)
+  FileAppend, %content%, %NewRecordPath%
   if (!isAppendSaveMode || !FileExist(NewRecordPath) ) {
 content =
 (
 #SingleInstance force
 #NoEnv
 #Include %SharedPath%
-global SpdM, SpdR
+global sM := 1, sR, MainGuiHwnd
 OnMessage(0x040A, "HandleMultiplierUpdate")
 HandleMultiplierUpdate(wParam, lParam, msg, hwnd) {
-  SpdM := wparam = 0 ? lparam : lParam / (10 * wParam) ; Float Reconstruction
-  MsgBox, PlaySpeedMultiplier updated %wParam% %lParam% %SpdM%
+  sM := wparam = 0 ? lparam : lParam / (10 * wParam) ; Float Reconstruction
 }
-nSpdR := %PlaySpeedRecord%
+sR := %PlaySpeedRecord%
+Sleep, 200
 Loop, 1
-{`n
+{
+
 )
-  }
   FileAppend, %content%, %NewRecordPath%
+  }
 }
 
 CloseFile() {
-  content .= "}"
-  content .= "}"
+  val := "%"
+content = 
+(
+}
+PostMessage, 0x040B, 0,0,, %val% "ahk_id" MainGuiHwnd
+ExitApp
+; RecordingTime: %ElapsedTime%ms
+)
   FileAppend, %content%, %NewRecordPath%
 }
 
 FlushLog() {
   global LogArr, NewRecordPath
-  MsgBox, % NewRecordPath
   for i, line in LogArr 
   {
     content .= line "`n"
-    Log("Flush", line)
   }
   FileAppend, %content%, %NewRecordPath%
   LogArr := []
@@ -180,22 +201,6 @@ RedirectLogMouse(isEnabled) {
   For i, key in WheelVK {
     vkey := Format("vk{:X}", key)
     Hotkey, % "~*" vkey, LogWheel, %isEnabled% UseErrorLevel
-  }
-}
-
-LogWheel() {
-  If (!isLogMouse)
-    Return
-  vksc := SubStr(A_ThisHotkey, 3)
-  key := GetKeyName(vksc)
-  if (isPreciseMode) {
-    LogData("Send," "{" key "}")
-  } else if (isAggregateMode) {
-    if !(previousWheel = key) {
-      LogWheelAggregator()
-      previousWheel := key
-    } 
-    WheelAggregator++
   }
 }
 
@@ -238,29 +243,52 @@ LogUpHotKey() {
 }
 
 LogHotKey() {
+global Aggregator
   If (!isLogKeyboard)
     Return
   vksc := SubStr(A_ThisHotkey, 3)
   key := GetKeyName(vksc)
   ; Log("KeyDown", A_ThisHotkey " " vksc " " key)
-  if(isPreciseMode) {
-    If (PressedLog[vksc] = "Down") 
+  if(isAggregateMode) {
+    Log("key", key)
+    if (StrLen(key) = 1 && key~="\w") {
+      Aggregator := Aggregator key
+      Return ; Collect Words until interrupted
+    }
+    LogAggregator()
+    LogNonLetter(vksc, key)
+  }
+  else if(isPreciseMode) {
+    If (PressedLog[vksc] = "Down")
       Return
     SendPreciseKey("Down", vksc, key)
     Return
   }
-  else if(isAggregateMode) {
-    LogWheelAggregator()
-    if (StrLen(key) = 1 && key~="\w") {
-
-      Aggregator := Aggregator key
-      Return ; Collect Words until interrupted
-    } 
-    LogAggregator()
-    formattedKey := StrLen(key)>1 ? "{" key "}" : "{" vksc "}"
-    LogData("Send, " + formattedKey)
-  }
 }
+
+LogNonLetter(vksc, key) {
+  if !(previousKey = key) {
+    LogKeyAggregator()
+    previousKey := key
+  } 
+  KeyboardAggregator++
+}
+
+LogWheel() {
+  If (!isLogMouse)
+    Return
+  vksc := SubStr(A_ThisHotkey, 3)
+  key := GetKeyName(vksc)
+  if (isPreciseMode) {
+    LogData("Send," "{" key "}")
+  } else if (isAggregateMode) {
+    if !(previousWheel = key) {
+      LogWheelAggregator()
+      previousWheel := key
+    } 
+    WheelAggregator++
+  }
+} 
 
 SendPreciseKey(state, vksc, key) {
   PressedLog[vksc] := state
@@ -273,12 +301,14 @@ SendPreciseKey(state, vksc, key) {
 LogDownControlKey() {
   If (!isLogKeyboard)
     Return
-  If (isAggreateMode)
-    LogAggregator()
   vksc := SubStr(A_ThisHotkey, 3)
-  key := GetKeyName(vksc)
   If (PressedLog[vksc] = "Down") 
     Return
+  If (isAggregateMode) {
+    LogAggregator()
+    LogKeyAggregator()
+  }
+  key := GetKeyName(vksc)
   key := StrReplace(key, "Control", "Ctrl")
   SendPreciseKey("Down", vksc, key)
 }
@@ -286,8 +316,10 @@ LogDownControlKey() {
 LogUpControlKey() {
   If (!isLogKeyboard)
     Return
-  If (isAggreateMode)
+  If (isAggregateMode) {
     LogAggregator()
+    LogKeyAggregator()
+  }
   vksc := SubStr(A_ThisHotkey, 3, -3)
   key := GetKeyName(vksc)
   key := StrReplace(key, "Control", "Ctrl")
@@ -295,18 +327,39 @@ LogUpControlKey() {
 }
 
 LogAggregator() {
-  If (Aggregator != "") {
-    LogData("Send, " + Aggregator)
+  Log("is", Aggregator != "")
+  if (Aggregator != "") {
+    LogData("Send, " Aggregator)
     Aggregator := ""
   }
-  LogWheelAggregator()
 }
 
 LogWheelAggregator() {
-  If (WheelAggregator > 0) {
-    LogData("Loop, " WheelAggregator "`n  Send, {" previousWheel "}")
-    WheelAggregator := 0
-    previousWheel := ""
+  If (WheelAggregator != 0) {
+    If (WheelAggregator = 1) {
+      LogData("Send, {" previousWheel "}")
+      WheelAggregator := 0
+      previousWheel := ""
+    } else {
+      LogData("Loop, " WheelAggregator "`n  Send, {" previousWheel "}")
+      WheelAggregator := 0
+      previousWheel := ""
+    }
+  }
+}
+
+LogKeyAggregator() {
+  Log("KeyboardAggregator", KeyboardAggregator)
+  If (KeyboardAggregator != 0) {
+    If (KeyboardAggregator = 1) {
+      LogData("Send, {" previousKey "}")
+      KeyboardAggregator := 0
+      previousKey := ""
+    } else {
+      LogData("Loop, " KeyboardAggregator "`n  Send, {" previousKey "}")
+      KeyboardAggregator := 0
+      previousKey := ""
+    }
   }
 }
 
@@ -331,50 +384,33 @@ LogDownMouseKey() {
   SendMouseKey(state, vksc, clickType)
 }
 
+
 SendMouseKey(state, vksc, clickType) {
   PressedLog[vksc] := state
-  CoordMode, Mouse, %CoordMode%
+  CoordMode, Mouse, %CoordinateMode%
   MouseGetPos, X, Y, windowHwnd
-  GuiControl, Disable, %windowHwnd%
-  ControlGetPos, X, Y, w, h, , ahk_id %windowHwnd%
   If (windowHwnd = MainGuiHwnd) {
     Return
   }
   formattedKey := clickType ", " X ", " Y ",,, " state
-  LogData("MouseClick," formattedKey)
-}
 
-; LogWindow() {
-;   global oldid, LogArr
-;   static oldtitle
-;   id:=WinExist("A")
-;   WinGetTitle, title
-;   WinGetClass, class
-;   if (title="" and class="")
-;     return
-;   if (id=oldid and title=oldtitle)
-;     return
-;   oldid:=id, oldtitle:=title
-;   title:=SubStr(title,1,50)
-;   if (!A_IsUnicode)
-;   {
-;     GuiControl,, MyText, %title%
-;     GuiControlGet, s,, MyText
-;     if (s!=title)
-;       title:=SubStr(title,1,-1)
-;   }
-;   title.=class ? " ahk_class " class : ""
-;   title:=RegExReplace(Trim(title), "[``%;]", "``$0")
-;   ;~ s:="tt = " title "`nWinWait, %tt%"
-;     ;~ "`nIfWinNotActive, %tt%,, WinActivate, %tt%"  
-;   s:="      tt = " title "`n      WinWait, %tt%"
-;     "`n      IfWinNotActive, %tt%,, WinActivate, %tt%"    
-;   i:=LogArr.MaxIndex(), r:=LogArr[i]
-;   if InStr(r,"tt = ")=1
-;     LogArr[i]:=s, Logg()
-;   else
-;     Logg(s)
-; }
+  if (isLogColor) {
+  PixelGetColor, color, X, Y, RGB
+  delay := isAggregateMode ? 0 : 10
+  data =
+(
+MouseMove, %X%, %Y%, %delay%
+while (color != %color%) {
+  Sleep, %LogColorSleep%  ; 
+  PixelGetColor, color, %X%, %Y%, RGB
+} MouseClick, %formattedKey%
+)
+  LogData(data)
+  } else {
+  LogData("MouseClick," formattedKey)
+  }
+  
+}
 
 LogData(data) {
   if(isLogSleep) {
@@ -382,14 +418,45 @@ LogData(data) {
     cTime := A_TickCount
     Delay := (LastLogTime ? cTime-LastLogTime : 0), LastLogTime := cTime
     If (isAggregateMode) {
-      Log("AD", AggregateLogDelay)
-      LogArr.Push("Sleep, " AggregateLogDelay " //SpdR * SpdM")  
+      LogArr.Push("Sleep, " AggregateLogDelay " //(sR*sM)")  
     } else if (isPreciseMode) {
-      Log("D", Delay)
-      LogArr.Push("Sleep, " Delay " //SpdR * SpdM")
+      LogArr.Push("Sleep, " Delay " //(sR*sM)")
     }
   }
   LogArr.Push(data)
+}
+
+
+LogWindow() {
+  If (!isLogWindow)
+    Return
+  static oldtitle, oldHwnd
+  hwnd := WinExist("A")
+  If (hwnd = MainGuiHwnd)
+    return
+  WinGetTitle, title, ahk_id %hwnd%
+  WinGetClass, class, ahk_id %hwnd%
+  if (title = "" && class = "")
+    Return
+  if (hwnd = oldHwnd && title = oldtitle)
+    Return
+  oldHwnd := hwnd
+  oldtitle := title
+  title := SubStr(title, 1, 50)
+  Log("tt", title)
+
+  if (!A_IsUnicode) {
+    GuiControl,, MyText, %title%
+    GuiControlGet, s,, MyText
+    if (s != title)
+      title := SubStr(title, 1, -1)
+  }
+  title := RegExReplace(Trim(title), "[``%;]", "``$0")
+  data := "  tt = " title
+    . "`n  WinWait, %tt%"
+    . "`n  IfWinNotActive, %tt%,, WinActivate, %tt%"
+    
+  LogData(data)
 }
 
 
