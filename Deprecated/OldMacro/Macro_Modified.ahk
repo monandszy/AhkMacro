@@ -204,7 +204,6 @@ GuiControl,, Pause, % "[F6] Pause "
 isPaused:=0
 return
 
-
 F4::
 Play:
 Suspend, Permit

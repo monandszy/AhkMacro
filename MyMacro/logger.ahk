@@ -19,20 +19,17 @@ global SpecialKeys := "NumpadLeft,NumpadRight,NumpadEnter,Home,End,PgUp,PgDn,Lef
 global ControlKeys := "Alt,Control,Shift,Win"
 global MouseVK = [1,2,4,5,6]
 global WheelVK = [156,157,158,159]
-global AggregateActionDelay := 100
-global LoggerLogFile = A_ScriptDir . "/.Logs/LoggerLog.log"
-global SettingsPath := A_ScriptDir . "/settings"
+global AggregateLogDelay := 200
+global LoggerLogFile = ".Logs/LoggerLog.log"
+global SettingsPath := "settings"
+global SharedPath := A_ScriptDir "/Macros/.shared.ahk" 
 ;----------------------------------------------------
 ; Loaded Options
 ;----------------------------------------------------
 global WorkDir
-global NewRecordName
-global RecordFolderPath
-global PlaySpeed
+global PlaySpeedRecord
 global FileSaveMode
 global NewRecordPath
-global LatestSelectPath
-global LatestSelectName
 global isLogKeyboard 
 global isLogMouse 
 global isLogSleep 
@@ -95,6 +92,7 @@ Test(wParam, lParam, msg, hwnd) {
 RecordStart(wParam, lParam, msg, hwnd) {
   Log("Event","RecordStart")
   LoadSettings()
+  InitFile()
   Suspend, Off
   LogArr := []
   Aggregator := ""
@@ -111,6 +109,7 @@ RecordEnd(wParam, lParam, msg, hwnd) {
     LogAggregator()
   FlushLog()
   SetTimer, FlushLog, Off 
+  CloseFile()
 }
 
 Pause(wParam, lParam, msg, hwnd) {
@@ -122,29 +121,51 @@ Pause(wParam, lParam, msg, hwnd) {
 
 Resume(wParam, lParam, msg, hwnd) {
   Log("Event","Resume")
+  SpdRBackup := %PlaySpeedRecord%
+  MsgBox, % SpdRBackup
   LoadSettings()
+  if (SpdRBackup != PlaySpeedRecord) {
+    LogData("SpdR := " PlaySpeedRecord)
+  }
   Suspend, Off
   SetTimer, FlushLog, 5000 
+}
+
+InitFile() {
+  if (!isAppendSaveMode || !FileExist(NewRecordPath) ) {
+content =
+(
+#SingleInstance force
+#NoEnv
+#Include %SharedPath%
+global SpdM, SpdR
+OnMessage(0x040A, "HandleMultiplierUpdate")
+HandleMultiplierUpdate(wParam, lParam, msg, hwnd) {
+  SpdM := wparam = 0 ? lparam : lParam / (10 * wParam) ; Float Reconstruction
+  MsgBox, PlaySpeedMultiplier updated %wParam% %lParam% %SpdM%
+}
+nSpdR := %PlaySpeedRecord%
+Loop, 1
+{`n
+)
+  }
+  FileAppend, %content%, %NewRecordPath%
+}
+
+CloseFile() {
+  content .= "}"
+  content .= "}"
+  FileAppend, %content%, %NewRecordPath%
 }
 
 FlushLog() {
   global LogArr, NewRecordPath
   MsgBox, % NewRecordPath
-  if (!isAppendSaveMode) {
-    content =
-    (
-#SingleInstance force
-#NoEnv
-ps := %PlaySpeed% `n
-    )
-  }
-  content .= "Loop, 1 `n {`n"
   for i, line in LogArr 
   {
-    content .= line . "`n"
+    content .= line "`n"
     Log("Flush", line)
   }
-  content .= "}"
   FileAppend, %content%, %NewRecordPath%
   LogArr := []
 }
@@ -231,7 +252,8 @@ LogHotKey() {
   else if(isAggregateMode) {
     LogWheelAggregator()
     if (StrLen(key) = 1 && key~="\w") {
-      Aggregator := Aggregator . key
+
+      Aggregator := Aggregator key
       Return ; Collect Words until interrupted
     } 
     LogAggregator()
@@ -242,7 +264,7 @@ LogHotKey() {
 
 SendPreciseKey(state, vksc, key) {
   PressedLog[vksc] := state
-  key := key . " " . state
+  key := key " " state
   formattedKey := key ~= "\w" ? "{" key "}" : "{" vksc "}"
   LogData("Send, " + formattedKey)
 }
@@ -319,7 +341,7 @@ SendMouseKey(state, vksc, clickType) {
     Return
   }
   formattedKey := clickType ", " X ", " Y ",,, " state
-  LogData("MouseClick," . formattedKey)
+  LogData("MouseClick," formattedKey)
 }
 
 ; LogWindow() {
@@ -344,9 +366,9 @@ SendMouseKey(state, vksc, clickType) {
 ;   title.=class ? " ahk_class " class : ""
 ;   title:=RegExReplace(Trim(title), "[``%;]", "``$0")
 ;   ;~ s:="tt = " title "`nWinWait, %tt%"
-;     ;~ . "`nIfWinNotActive, %tt%,, WinActivate, %tt%"  
+;     ;~ "`nIfWinNotActive, %tt%,, WinActivate, %tt%"  
 ;   s:="      tt = " title "`n      WinWait, %tt%"
-;     . "`n      IfWinNotActive, %tt%,, WinActivate, %tt%"    
+;     "`n      IfWinNotActive, %tt%,, WinActivate, %tt%"    
 ;   i:=LogArr.MaxIndex(), r:=LogArr[i]
 ;   if InStr(r,"tt = ")=1
 ;     LogArr[i]:=s, Logg()
@@ -360,11 +382,11 @@ LogData(data) {
     cTime := A_TickCount
     Delay := (LastLogTime ? cTime-LastLogTime : 0), LastLogTime := cTime
     If (isAggregateMode) {
-      Log("AD", AggregateActionDelay)
-      LogArr.Push("Sleep, " AggregateActionDelay " //ps")  
+      Log("AD", AggregateLogDelay)
+      LogArr.Push("Sleep, " AggregateLogDelay " //SpdR * SpdM")  
     } else if (isPreciseMode) {
       Log("D", Delay)
-      LogArr.Push("Sleep, " Delay " //ps")
+      LogArr.Push("Sleep, " Delay " //SpdR * SpdM")
     }
   }
   LogArr.Push(data)

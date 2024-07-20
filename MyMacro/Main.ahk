@@ -17,4 +17,5 @@ WinGet, LoggerPID, PID, % LoggerPath
 Process, Close, %GuiPID%
 Process, Close, %LoggerPID%
 Run, %LoggerPath%,,, loggerPID
+Sleep, 200
 Run, %GuiPath%,,, GuiPID
