@@ -10,3 +10,7 @@ HandleMultiplierUpdate(wParam, lParam, msg, hwnd) {
 nSpdR := 1
 Loop, 1
 {
+}}Sleep, 200 //SpdR * SpdM
+MouseClick,L, 6, 4,,, 
+Sleep, 200 //SpdR * SpdM
+MouseClick,L, 6, 4,,, 

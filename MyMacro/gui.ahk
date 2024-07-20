@@ -100,7 +100,9 @@ global guiHwnds := []
 global buttonHwnds := []
 global lastWMHideTime := []
 global buttonToggled := []
+global optionToggled := []
 global buttonEnabled := []
+global DestructionBlock
 ;----------------------------------------------------
 global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
@@ -138,9 +140,9 @@ global MainGuiHwnd := Main_gui_id
 Gui, Main: Font, s11 
 Gui, Main: Margin, 0, 0
 
-global DynamicButtons := "Play,Edit,Exit"
-global StaticButtons := "Record"
-global SpecialButtons := "Pause" ; Work when not recording
+; global DynamicButtons := "Play,Edit,Exit"
+; global StaticButtons := "Record"
+; global SpecialButtons := "Pause" ; Work when not recording
 MainButtons = 
 (
 [F1]Record
@@ -383,34 +385,34 @@ UpdateTip(text:="") {
 MainGuiContextMenu:
   label := A_GuiControl
   state := buttonEnabled[label]
-  If (hasValue(SpecialButtons, label)) { 
+  If (label = "Pause") { 
     If (!IsRecordingPlaying) 
-      OpenStaticOptionGui(label)
+      OpenClickOptionGui(label)
   } 
   else if (state) {
-    if (hasValue(DynamicButtons, label)) 
-      OpenDynamicOptionGui(label)
-    else If (hasValue(StaticButtons, label))
-      OpenStaticOptionGui(label)
+    ; if (hasValue(DynamicButtons, label)) 
+      OpenClickOptionGui(label)
+    ; else If (hasValue(StaticButtons, label))
+      ; OpenStaticOptionGui(label)
   }
 Return
 
 ; OptionsX chain (Ctrl hotkey support)
-RecordOptionHotkey:
-label := RegExReplace(A_ThisLabel, "OptionHotkey$")
-state := buttonEnabled[label]
-if (state) {
-  OpenStaticOptionGui(label)
-}
-Return
+; label := RegExReplace(A_ThisLabel, "OptionHotkey$")
+; state := buttonEnabled[label]
+; if (state) {
+;   OpenStaticOptionGui(label)
+; }
+; Return
 
+RecordOptionHotkey:
 PlayOptionHotkey:
 EditOptionHotkey:
 ExitOptionHotkey:
 label := RegExReplace(A_ThisLabel, "OptionHotkey$")
 state := buttonEnabled[label]
 if (state) {
-  OpenDynamicOptionGui(label)
+  OpenKeyOptionGui(label)
 }
 Return
 
@@ -418,48 +420,54 @@ Return
 PauseOptionHotkey:
 label := RegExReplace(A_ThisLabel, "OptionHotkey$")
 if (!IsRecordingPlaying) {
-  OpenStaticOptionGui(label)
+  OpenKeyOptionGui(label)
+  ; OpenStaticOptionGui(label)
 }
 Return
 
-OpenDynamicOptionGui(title) {
-  
-  DetectHiddenWindows, On
+OpenClickOptionGui(title) {
+  Log("Clicklabel", title)
   Hwnd := guiHwnds[title]
   isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 200 ; byWM (if not passed)
-  Log("was", isHiddenbyWM)
-  if (!isHiddenbyWM) {  ; If passed
-    Log("Show", !wasHidden)
-  } else if (lastWMHideTime[Hwnd]) {
-    Gui, %title%: Destroy
-    Log("DoNothing", A_TickCount)
+  if (!isHiddenbyWM || !guiHwnds[title] || !optionToggled[label]) {  ; If passed
+    optionToggled[label] := True
+    LoadOptionsGui(title)
+    ; Log("Show", !wasHidden)
+  } else {
+    optionToggled[label] := False
+    ; Log("DestroyedOnClick", Hwnd)
     Return
   } 
-  LoadOptionsGui(title)
 }
 
-OpenStaticOptionGui(title) {
-  DetectHiddenWindows, On
-  ; Check if Gui already created
+OpenKeyOptionGui(title) {
+  Log("Keylabel", title)
   Hwnd := guiHwnds[title]
-  isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 200 ; byWM (if not passed)
-  if (WinExist("ahk_id " Hwnd) + 0) {
-    DetectHiddenWindows, Off
-    window:= title "Options"
-    if (!WinExist(window) && !isHiddenbyWM) { ; Show/Hide Toggle
-      Gui, %title%: show,, %window%
-    } else {
-      Gui, %title%: hide
-    }
-    DetectHiddenWindows, On
-    Return
+  isHiddenbyWM := A_TickCount - lastWMHideTime[Hwnd] < 100 ; byWM (if not passed)
+  DetectHiddenWindows, Off
+  if (!isHiddenbyWM || !guiHwnds[title] || !optionToggled[label]) {
+    optionToggled[label] := True
+    LoadOptionsGui(title)
+    ; Log("Show", Hwnd)
+    DestructionBlock := False
+  } 
+  else if (!DestructionBlock && !WinExist("ahk_id " Hwnd) + 0) {
+    optionToggled[label] := True
+    ; Log("Regenerated", Hwnd)
+    LoadOptionsGui(title)
+  } 
+  else {
+    optionToggled[label] := False
+    ; Log("DestroyedOnHotkey", Hwnd)
+    DestructionBlock := Hwnd
+    Gui, %title%: Destroy
   }
-  LoadOptionsGui(title)
+  DetectHiddenWindows, On
 }
+
 
 LoadOptionsGui(title) {
   Gui, %title%: +AlwaysOnTop +ToolWindow -Caption 
-  Gui, %title%: +LastFound
   Gui, %title%: +Hwnd%title%_gui_id
   guiHwnds[title] := %title%_gui_id
   Gui, %title%: Font, s11
@@ -480,20 +488,14 @@ LoadOptionsGui(title) {
 WM_ACTIVATE(wParam, lParam, msg, Hwnd) {
   Hwnd:= Format("0x{:X}", Hwnd)
   if(Hwnd != guiHwnds["Main"]) {
+    Log("HwndWM", Hwnd)
     if (wParam = 0) {
-      For i,v in StrSplit(DynamicButtons, ",")
-      {
-        If (Hwnd = guiHwnds[v]) {
-          ; Log("Destroy", "")
-          Gui, Destroy
-          lastWMHideTime[Hwnd] := A_TickCount
-          Return
-        }
+      If (DestructionBlock != Hwnd) {
+        Log("Destroy", DestructionBlock)
+        Gui, Destroy
+        lastWMHideTime[Hwnd] := A_TickCount
       }
-      ; Log("Hide", "")
-      Gui, Hide
-      ; Timer For eliminating Show after Hide
-      lastWMHideTime[Hwnd] := A_TickCount
+      DestructionBlock := False
     }
   }
 }
@@ -545,14 +547,14 @@ LoadPauseOptions() {
   global PSRecordInputText, DecreasePSRecord, IncreasePSRecord
   Gui, Pause: Add, Text, x0 w1, SpdR:
   Gui, Pause: Add, Button, x+0 w20 h20 vDecreasePSRecord gDecreasePSRecord, -
-  Gui, Pause: Add, Edit, x+0 w45 h20 vPSRecordInputText Tooltip, %PlaySpeedRecord%
+  Gui, Pause: Add, Edit, x+0 w40 h20 vPSRecordInputText Tooltip, %PlaySpeedRecord%
   Gui, Pause: Add, Button, x+0 w20 h20 vIncreasePSRecord gIncreasePSRecord, +
   Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitPSRecord Default, 
 
   global PSMultiplierInputText, DecreasePSMultiplier, IncreasePSMultiplier
   Gui, Pause: Add, Text, x0 w1, SpdM:
   Gui, Pause: Add, Button, x+0 w20 h20 vDecreasePSMultiplier gDecreasePSMultiplier, -
-  Gui, Pause: Add, Edit, x+0 w45 h20 vPSMultiplierInputText Tooltip, %PlaySpeedMultiplier%
+  Gui, Pause: Add, Edit, x+0 w40 h20 vPSMultiplierInputText Tooltip, %PlaySpeedMultiplier%
   Gui, Pause: Add, Button, x+0 w20 h20 vIncreasePSMultiplier gIncreasePSMultiplier, +
   Gui, Pause: Add, Button, x+0 w0 h0 Hidden gSubmitPSMultiplier Default, 
 

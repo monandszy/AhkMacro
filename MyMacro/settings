@@ -6,7 +6,7 @@ PlaySpeedMultiplier:3.3
 NewRecordPath:Macros/Temp/Cat.ahk
 LatestSelectPath:Macros/Temp/Cat.ahk
 LatestSelectName:Cat
-MainGuiHwnd:0xb6013a
+MainGuiHwnd:0x9c044c
 isLogKeyboard:1
 isLogMouse:1
 isLogSleep:1
