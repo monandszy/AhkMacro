@@ -2,8 +2,6 @@
   <img src="Release/Toolbar.png" alt="Toolbar Description">
 </div>
 
-# Monacro Tool
-
 ## How to Use:
 1. **Download** the latest release or the Monacro folder.
 2. **Configure** the constants in the settings file, especially the Editor Path.
