@@ -61,7 +61,7 @@
 </div>
 
 - **Open WorkDir** in editor.
-- **Create/Pick a WorkDir**.
+- **Create/Pick a WorkDir**. (Folder from which files are shown and recorded to)
 
 ## TODO:
 - Implement second tooltip updating during script runtime.
@@ -69,3 +69,4 @@
 - Develop a hotkey manager to set hotkeys for scripts in the GUI, based on WorkDir.
 - Add functionality to delete/rename files in Edit/Play.
 - Make AggregateDelay modifiable (currently set to 200).
+- How it works Readme section
