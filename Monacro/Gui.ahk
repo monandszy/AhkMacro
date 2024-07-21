@@ -175,14 +175,14 @@ For i,text in StrSplit(Mainbuttons, "`n")
   buttonHwnds[label] := %Hwnd%
   buttonToggled[label] := False
   buttonEnabled[label] := True
-  Hotkey, %hotkey%, %label%Hotkey
-  Hotkey, ^%hotkey%, %label%OptionHotkey
+  Hotkey, %hotkey%, %label%Hotkey ; Hotkey
+  Hotkey, ^%hotkey%, %label%OptionHotkey ; Ctrl Hotkey
 }
 Gui, Main: Show, NA y0, Monacro
 Gui, Main: Submit, NoHide
 
 ; Get the position of the main GUI window
-; x left edge align ; y top align ; w width ; h height
+; x left edge align y top align w width h height
 global GuiX, GuiY, GuiWidth, GuiHeight
 WinGetPos, GuiX, GuiY, GuiWidth, GuiHeight, Monacro
 
@@ -426,21 +426,11 @@ MainGuiContextMenu:
       OpenClickOptionGui(label)
   } 
   else if (state) {
-    ; if (hasValue(DynamicButtons, label)) 
       OpenClickOptionGui(label)
-    ; else If (hasValue(StaticButtons, label))
-      ; OpenStaticOptionGui(label)
   }
 Return
 
-; OptionsX chain (Ctrl hotkey support)
-; label := RegExReplace(A_ThisLabel, "OptionHotkey$")
-; state := buttonEnabled[label]
-; if (state) {
-;   OpenStaticOptionGui(label)
-; }
-; Return
-
+; Ctrl Hotkeys
 RecordOptionHotkey:
 PlayOptionHotkey:
 EditOptionHotkey:
@@ -457,7 +447,6 @@ PauseOptionHotkey:
 label := RegExReplace(A_ThisLabel, "OptionHotkey$")
 if (!IsRecordingPlaying) {
   OpenKeyOptionGui(label)
-  ; OpenStaticOptionGui(label)
 }
 Return
 
@@ -724,7 +713,6 @@ LoadEditOptions() {
   }
 }
 
-; C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\Record_20240717225252.ahk
 EditFile:
 global WorkDirPath, LatestEditPath
   GuiControlGet, ButtonText, FocusV  ; Get the text of the clicked button
@@ -735,8 +723,6 @@ Return
 
 LoadExitOptions() {
   global WorkDirInputText
-  ; Gui, Exit: Add, Text, x0, %A_Space%WorkDir:%A_Space%
-  ; Gui, Exit: Add, Text, x+0 w50 vWorkDir, %WorkDir%%A_Space%
   Gui, Exit: Add, Button, x0 h20 gOpenWorkDir, OpenWorkDir
   
   Gui, Exit: Add, Edit, x0 w120 h20 vWorkDirInputText Tooltip, %WorkDir%

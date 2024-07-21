@@ -12,7 +12,7 @@ SetWorkingDir %A_ScriptDir%
 ;----------------------------------------------------
 ; Static Options
 ;----------------------------------------------------
-global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11" ; F12 left to you
+global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11" ; F12 left up to you
 global SpecialKeys := "NumpadLeft,NumpadRight,NumpadEnter,Home,End,PgUp,PgDn,Left,Right,Up,Down,Delete,Insert"
 global ControlKeys := "Alt,Control,Shift,Win"
 global MouseVK = [1,2,4,5,6]
@@ -214,7 +214,6 @@ FlushLog() {
 }
 
 RedirectLogMouse(isEnabled) {
-  ; VK 1,2,4,5,6
   For i, key in MouseVK {
     vkey := Format("vk{:X}", key)
     Hotkey, % "~*" vkey, LogDownMouseKey, %isEnabled% UseErrorLevel
@@ -227,7 +226,7 @@ RedirectLogMouse(isEnabled) {
 }
 
 RedirectLogKeyboard(isEnabled) {
-  Loop, 256 ; 256 VK exist total, skips mouse
+  Loop, 256 ; 256 VK exist total
   {
     if (hasValue(MouseVK, A_Index) || hasValue(WheelVK, A_Index)) {
       continue ; Skip mouse
@@ -420,7 +419,7 @@ SendMouseKey(state, vksc, clickType) {
 (
 MouseMove, %X%, %Y%, %delay%
 while (color != %color%) {
-  Sleep, %LogColorSleep%  ; 
+  Sleep, %LogColorSleep%   
   PixelGetColor, color, %X%, %Y%, RGB
 } MouseClick, %formattedKey%
 )
@@ -478,7 +477,7 @@ LogWindow() {
 }
 
 
-; checks if item exists in a string
+; checks if item exists in a string or list
 hasValue(list, item, del:=",") {
   if (item = "")
     Return False
