@@ -1,4 +1,7 @@
-#SingleInstance force
+; Recorded: 20240721131339
+  DetectHiddenWindows, On
+  SetTitleMatchMode, 2
+  CoordMode, Mouse, Window#SingleInstance force
 #NoEnv
 #Include C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\.shared.ahk
 global sM := 1, sR, MainGuiHwnd
@@ -10,7 +13,11 @@ sR := 1
 Sleep, 200
 Loop, 1
 {
+MouseClick,L, 515, 392,,, D
+MouseClick,L, 515, 392,,, U
+MouseClick,L, 539, 450,,, D
+MouseClick,L, 539, 450,,, U
 }
 PostMessage, 0x040B, 0,0,, % "ahk_id" MainGuiHwnd
 ExitApp
-; RecordingTime: 2359
+; RecordingTime: 9954ms

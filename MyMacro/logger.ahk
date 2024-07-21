@@ -45,9 +45,12 @@ global CoordinateMode
 LoadSettings() {
   Loop, Read, %SettingsPath%
   {
+    if(Trim(A_LoopReadLine) = "" || InStr(A_LoopReadLine, ";") != 0)
+      Continue
     option := StrSplit(A_LoopReadLine, ":",,2)
     label := option[1]
     %label% := option[2]
+    ; Log("labelInit", label)
   }
 }
 ;----------------------------------------------------
@@ -142,13 +145,17 @@ Resume(wParam, lParam, msg, hwnd) {
 }
 
 InitFile() {
+If (!FileExist(NewRecordPath)) {
 content = 
 (
-  ; Recorded: %A_Now%
-  CoordMode, Mouse, %CoordinateMode%
+; Recorded: %A_Now%
+DetectHiddenWindows, On
+SetTitleMatchMode, 2
+CoordMode, Mouse, %CoordinateMode%
 )
-  FileAppend, %content%, %NewRecordPath%
-  if (!isAppendSaveMode || !FileExist(NewRecordPath) ) {
+    FileAppend, %content%, %NewRecordPath%
+  }
+if (!isAppendSaveMode || !FileExist(NewRecordPath)) {
 content =
 (
 #SingleInstance force
@@ -165,18 +172,33 @@ Loop, 1
 {
 
 )
-  FileAppend, %content%, %NewRecordPath%
+    FileAppend, %content%, %NewRecordPath%
+} 
+else if (isAppendSaveMode && FileExist(NewRecordPath)) {
+content = 
+(
+    
+; Appended: %A_Now%
+CoordMode, Mouse, %CoordinateMode%
+sR := %PlaySpeedRecord%
+Sleep, 200
+Loop, 1
+{
+)
+FileAppend, %content%, %NewRecordPath%
   }
 }
+
+
 
 CloseFile() {
   val := "%"
 content = 
 (
 }
-PostMessage, 0x040B, 0,0,, %val% "ahk_id" MainGuiHwnd
-ExitApp
 ; RecordingTime: %ElapsedTime%ms
+PostMessage, 0x040B, 0,0,, %val% "ahk_id" MainGuiHwnd
+ExitApp ; If appendMode last 2 lines will be removed
 )
   FileAppend, %content%, %NewRecordPath%
 }

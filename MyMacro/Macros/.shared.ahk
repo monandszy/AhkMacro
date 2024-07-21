@@ -1,1 +1,1 @@
-global MainGuiHwnd := 0x45033e
+global MainGuiHwnd := 0x2102b0

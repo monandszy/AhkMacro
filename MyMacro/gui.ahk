@@ -16,20 +16,11 @@ Log(name, text) {
 }
 Log("DateTime", A_Now)
 ;----------------------------------------------------
-; Static Options
-;----------------------------------------------------
-global EditorPath := "C:\Program Files\VSCodium\VSCodium.exe"  
-global SettingsPath := "settings"
-global UpdateLatestSelectOnRecord := True
-global isTipEnabled := True
-;----------------------------------------------------
 ; Dynamic Options
 ;----------------------------------------------------
-LoadSettings()
-; If set Always Override on Startup
+global SettingsPath := "settings"
 global WorkDir
 global NewRecordName
-global RecordFolderPath
 global PlaySpeedRecord
 global PlaySpeedMultiplier
 global FileSaveMode
@@ -47,40 +38,51 @@ global isAppendSaveMode
 global isOverrideSaveMode
 global isNewSaveMode
 global CoordinateMode
-
+global EditorPath := "C:\Program Files\VSCodium\VSCodium.exe"  
+global UpdateLatestSelectOnRecord := True
+global isTipEnabled := True
+LoadSettings()
 LoadSettings() {
   Loop, Read, %SettingsPath%
   {
+    if(Trim(A_LoopReadLine) = "" || InStr(A_LoopReadLine, ";") != 0)
+      Continue
     option := StrSplit(A_LoopReadLine, ":",,2)
     label := option[1]
-    ; Log("labelInit", label)
     %label% := option[2]
+    ; Log("labelInit", label)
   }
 }
 UpdateSettings() {
 NewSettings = 
 (
-WorkDir:%WorkDir%
+; Do not modify on runtime, settings are overriden on exit
+; Constant
+EditorPath:%EditorPath%
+UpdateLatestSelectOnRecord:%UpdateLatestSelectOnRecord%
+isTipEnabled:%isTipEnabled%
+; Dynamic
 NewRecordName:%NewRecordName%
-RecordFolderPath:%RecordFolderPath%
+isAppendSaveMode:%isAppendSaveMode%
+isOverrideSaveMode:%isOverrideSaveMode%
+isNewSaveMode:%isNewSaveMode%
+CoordinateMode:%CoordinateMode%
+isAggregateMode:%isAggregateMode%
+isPreciseMode:%isPreciseMode%
 PlaySpeedRecord:%PlaySpeedRecord%
 PlaySpeedMultiplier:%PlaySpeedMultiplier%
-NewRecordPath:%NewRecordPath%
-LatestSelectPath:%LatestSelectPath%
-LatestSelectName:%LatestSelectName%
-MainGuiHwnd:%MainGuiHwnd%
 isLogKeyboard:%isLogKeyboard%
 isLogMouse:%isLogMouse%
 isLogSleep:%isLogSleep%
 isLogWindow:%isLogWindow%
 isLogColor:%isLogColor%
-isAggregateMode:%isAggregateMode%
-isPreciseMode:%isPreciseMode%
-isAppendSaveMode:%isAppendSaveMode%
-isOverrideSaveMode:%isOverrideSaveMode%
-isNewSaveMode:%isNewSaveMode%
+WorkDir:%WorkDir%
+; Util (auto generated)
+NewRecordPath:%NewRecordPath%
+LatestSelectPath:%LatestSelectPath%
+LatestSelectName:%LatestSelectName%
+MainGuiHwnd:%MainGuiHwnd%
 SharedPath:%SharedPath%
-CoordinateMode:%CoordinateMode%
 )
   FileDelete, %SettingsPath%
   FileAppend, %NewSettings%, %SettingsPath%
@@ -88,6 +90,8 @@ CoordinateMode:%CoordinateMode%
 ;----------------------------------------------------
 ; Util Options
 ;----------------------------------------------------
+global WorkDirPath := A_ScriptDir "\Macros\" WorkDir "\"
+global SharedPath := A_ScriptDir "\Macros\.shared.ahk"
 global FileSaveModes := "New,Override,Append"
 global CoordinateModes := "Screen,Window"
 global TimingModes = "Precise,Aggregate" 
@@ -98,7 +102,6 @@ global TipBackup := ""
 global TipToggle := 0
 global PlayTitle
 global PlayingPID
-global PlayingPID
 global PlayingHwnd
 global guiHwnds := []
 global buttonHwnds := []
@@ -107,7 +110,6 @@ global buttonToggled := []
 global optionToggled := []
 global buttonEnabled := []
 global DestructionBlock
-global SharedPath := A_ScriptDir "\Macros\.shared.ahk"
 ;----------------------------------------------------
 global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
@@ -196,6 +198,7 @@ ExitHotkey:
 PauseHotkey:
 label := RegExReplace(A_ThisLabel, "Hotkey$")
 state := buttonEnabled[label]
+Sleep, 100 ; Prevent Spam 
 if (state) {
   Goto, %label%
 }
@@ -247,11 +250,11 @@ Pause:
     If (buttonToggled["Record"]) {
       PostLoggerMessage(WM_PAUSE_LOGGER)
     } else if (buttonToggled["Play"]) {
-      Log("POST", "")
       PostPlayToggleMessage()
     }
+    EnableMainButton("Edit")
     IsRecordingPlaying := False
-    TipBackup = %RecentTip%
+    TipBackup := RecentTip
     UpdateTip("Paused " + RecentTip)
     buttonToggled["Pause"] := True
     GuiControl, Main: , Pause, [F2]Resume
@@ -276,21 +279,6 @@ ResumeButton() {
   GuiControl, Main: , Pause, [F2]Pause
 }
 
-ScriptPlayEnd(wParam, lParam, msg, hwnd) {
-  PlayEnd()
-} 
-
-PlayEnd() {
-  ResumeButton()
-  IsRecordingPlaying := False
-  buttonToggled["Play"] := False
-  GuiControl, Main: , Play, [F3]Play
-  EnableMainButton("Record")
-  EnableMainButton("Exit")
-  DisableMainButton("Pause")
-  UpdateTip("Finished: " PlayTitle)
-}
-
 Play:
   if (buttonToggled["Play"]) { ; Revert to State 1
     PlayStop()
@@ -300,6 +288,7 @@ Play:
     buttonToggled["Play"] := False
     GuiControl, Main: , Play, [F3]Play
     EnableMainButton("Record")
+    EnableMainButton("Edit")
     EnableMainButton("Exit")
     DisableMainButton("Pause")
     UpdateTip("Stopped: " PlayTitle)
@@ -315,19 +304,19 @@ Play:
     buttonToggled["Play"] := True
     GuiControl, Main: , Play, [F3]Stop
     DisableMainButton("Record")
+    DisableMainButton("Edit")
     DisableMainButton("Exit")
     EnableMainButton("Pause")
     UpdateTip("Playing:" PlayTitle)
   }
 Return 
 
-PostPlayToggleMessage() {
+PostPlayToggleMessage() { 
   DetectHiddenWindows, On
   WM_COMMAND := 0x0111
   ID_FILE_PAUSE := 65403
   PostMessage, WM_COMMAND, ID_FILE_PAUSE,,, % "ahk_id" PlayingHwnd
-  Log("PostPlayToggleMessage", PlayingHwnd " " ErrorLevel)
-  MsgBox, PostPlayToggleMessage %ErrorLevel%
+  ; Log("PostPlayToggleMessage", PlayingHwnd " " ErrorLevel)
 }
 
 PostSpeedMultiplier() {
@@ -342,7 +331,6 @@ PlayStart() {
   DetectHiddenWindows, On
   global PlayTitle, PlayingPID, PlayingHwnd
   PlayTitle := LatestSelectName
-  MsgBox, % LatestSelectPath
   Run, %LatestSelectPath%,,, OutputPID
   SetTimer, CheckPlay, 1000 ; In case of an premature end
   Sleep, 200
@@ -361,9 +349,27 @@ global PlayingPID
   if (Exists)  {
     Return
   } else {
+    SetTimer, CheckPlay, Off
     PlayEnd()
   }
 Return
+
+ScriptPlayEnd(wParam, lParam, msg, hwnd) {
+  PlayEnd()
+} 
+
+PlayEnd() {
+  ResumeButton()
+  IsRecordingPlaying := False
+  buttonToggled["Play"] := False
+  GuiControl, Main: , Play, [F3]Play
+  EnableMainButton("Record")
+  EnableMainButton("Edit")
+  EnableMainButton("Exit")
+  DisableMainButton("Pause")
+  UpdateTip("Finished: " PlayTitle)
+  SetTimer, CheckPlay, Off
+}
 
 ProcessExist(PID) {
   Process, Exist, %PID%
@@ -391,6 +397,7 @@ UpdateTip(text:="") {
   global TipToggle ; Cycles trough guis to prevent flickering from Destroying
   if(text = "" || !isTipEnabled)
     return
+  RecentTip := text
   Gui, Tip%TipToggle%: +AlwaysOnTop +ToolWindow -Caption
   Gui, Tip%TipToggle%: +HwndTip_gui_id
   guiHwnds["Tip" + TipToggle] := Tip_gui_id
@@ -689,7 +696,7 @@ global IsRecordingPlaying, LogOptions
 Return
 
 LoadPlayOptions() {
-  Loop, %RecordFolderPath%\*.ahk
+  Loop, %WorkDirPath%\*.ahk
   {
     SplitPath, A_LoopFilePath, fileName
     fileName := StrReplace(fileName, ".ahk", "")
@@ -701,13 +708,13 @@ LoadPlayOptions() {
 PlayFile:
 global LatestSelectPath, LatestSelectName
   GuiControlGet, ButtonText, FocusV  ; Get the text of the clicked button
-  LatestSelectPath := RecordFolderPath ButtonText ".ahk"
+  LatestSelectPath := WorkDirPath ButtonText ".ahk"
   LatestSelectName := ButtonText
   Gosub, Play
 Return
 
 LoadEditOptions() {
-  Loop, %RecordFolderPath%\*.ahk
+  Loop, %WorkDirPath%\*.ahk
   {
     SplitPath, A_LoopFilePath, fileName
     fileName := StrReplace(fileName, ".ahk", "")
@@ -718,9 +725,9 @@ LoadEditOptions() {
 
 ; C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\Record_20240717225252.ahk
 EditFile:
-global RecordFolderPath, LatestEditPath
+global WorkDirPath, LatestEditPath
   GuiControlGet, ButtonText, FocusV  ; Get the text of the clicked button
-  LatestSelectPath := RecordFolderPath ButtonText ".ahk"
+  LatestSelectPath := WorkDirPath ButtonText ".ahk"
   LatestSelectName := ButtonText
   Gosub, Edit
 Return
@@ -744,9 +751,9 @@ SetWorkDir:
 global WorkDir
   GuiControlGet, inputText, , WorkDirInputText
   WorkDir := inputText
-  RecordFolderPath := A_ScriptDir "\Macros\" WorkDir "\"
-  IfNotExist, %RecordFolderPath%
-      FileCreateDir, %RecordFolderPath%
+  WorkDirPath := A_ScriptDir "\Macros\" WorkDir "\"
+  IfNotExist, %WorkDirPath%
+      FileCreateDir, %WorkDirPath%
   UpdateTip("SetRecordFolder: " WorkDir)
 Return
 
@@ -754,7 +761,7 @@ ChangeWorkDir:
 global WorkDir	
   GuiControlGet, ButtonText, FocusV 
   WorkDir := ButtonText
-  RecordFolderPath := A_ScriptDir "\Macros\" WorkDir "\"
+  WorkDirPath := A_ScriptDir "\Macros\" WorkDir "\"
   GuiControl,, WorkDirInputText, %WorkDir%
 Return
 
@@ -771,7 +778,7 @@ if hidebuttons {
 Return
 
 SetNewRecordPath() {
-  global NewRecordName, RecordFolderPath, NewRecordPath
+  global NewRecordName, WorkDirPath, NewRecordPath
   if (NewRecordName = "Null" || NewRecordName = "") {
     NewRecordName := "Record_" A_Now
   }
@@ -780,7 +787,7 @@ SetNewRecordPath() {
   }
   else if (isNewSaveMode && !RegExMatch(NewRecordName, "Record_\d{12}")) {
     highest := 0
-    Loop, %RecordFolderPath%\*.ahk
+    Loop, %WorkDirPath%\*.ahk
     {
       SplitPath, A_LoopFilePath, FileName
       if (InStr(FileName, NewRecordName "_")) {
