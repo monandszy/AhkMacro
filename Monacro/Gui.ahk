@@ -9,16 +9,16 @@ DetectHiddenText, On
 SetWorkingDir %A_ScriptDir%
 
 ;----------------------------------------------------
-global GuiLogFile := ".Logs\GuiLog.log"
-FileDelete %GuiLogFile%
-Log(name, text) {
-  FileAppend, %name%:[%text%]`n, %GuiLogFile%,
-}
-Log("DateTime", A_Now)
+; global GuiLogFile := ".Logs\GuiLog.log"
+; FileDelete %GuiLogFile%
+; Log(name, text) {
+;   FileAppend, %name%:[%text%]`n, %GuiLogFile%,
+; }
+; Log("DateTime", A_Now)
 ;----------------------------------------------------
 ; Dynamic Options
 ;----------------------------------------------------
-global SettingsPath := "settings"
+global SettingsPath := "settings.txt"
 global WorkDir
 global NewRecordName
 global PlaySpeedRecord
@@ -38,9 +38,10 @@ global isAppendSaveMode
 global isOverrideSaveMode
 global isNewSaveMode
 global CoordinateMode
-global EditorPath := "C:\Program Files\VSCodium\VSCodium.exe"  
-global UpdateLatestSelectOnRecord := True
-global isTipEnabled := True
+global EditorPath
+global SharedPath := A_ScriptDir "\Macros\.shared.ahk"
+global UpdateLatestSelectOnRecord
+global isTipEnabled
 LoadSettings()
 LoadSettings() {
   Loop, Read, %SettingsPath%
@@ -49,14 +50,15 @@ LoadSettings() {
       Continue
     option := StrSplit(A_LoopReadLine, ":",,2)
     label := option[1]
-    %label% := option[2]
+    if(%label% = "")
+      %label% := option[2]
     ; Log("labelInit", label)
   }
 }
 UpdateSettings() {
 NewSettings = 
 (
-; Do not modify on runtime, settings are overriden on exit
+; Do not modify on runtime, settings are flushed on exit
 ; Constant
 EditorPath:%EditorPath%
 UpdateLatestSelectOnRecord:%UpdateLatestSelectOnRecord%
@@ -91,7 +93,8 @@ SharedPath:%SharedPath%
 ; Util Options
 ;----------------------------------------------------
 global WorkDirPath := A_ScriptDir "\Macros\" WorkDir "\"
-global SharedPath := A_ScriptDir "\Macros\.shared.ahk"
+IfNotExist, %WorkDirPath%
+  FileCreateDir, %WorkDirPath%
 global FileSaveModes := "New,Override,Append"
 global CoordinateModes := "Screen,Window"
 global TimingModes = "Precise,Aggregate" 
@@ -120,17 +123,18 @@ global WM_PLAY_SPEED_M := 0x040A
 global WM_PLAY_STOP := 0x040B
 OnMessage(WM_PLAY_STOP, "ScriptPlayEnd")
 
-global LoggerPath := "Logger.ahk"
+; global LoggerPath := "Logger.ahk"
+global LoggerPath := A_ScriptDir "\MonacroLogger.exe" ; exeToggle
 WinGet, LoggerPID, PID, % LoggerPath
 if (LoggerPID = "") {
-  MsgBox, 4096, Error, LoggerPID is Null, Increase Sleep Timer
-  Exit
+  MsgBox, 4096, Error, LoggerPID of %LoggerPath% is null
+  ExitApp
 }
 ; Log("LoggerPID", LoggerPID)
 global LoggerHwnd := WinExist("ahk_pid" LoggerPID)
 if (LoggerHwnd + 0 = 0) {
-  MsgBox, 4096, Error, LoggerHwnd is Null, Increase Sleep Timer
-  Exit
+  MsgBox, 4096, Error, LoggerHwnd of %LoggerPID% is null
+  ExitApp
 }
 ; Log("LoggerHwnd", LoggerHwnd)
 PostLoggerMessage(WM_TEST_LOGGER)
@@ -154,9 +158,6 @@ FileAppend, %shared%, %SharedPath%
 Gui, Main: Font, s11 
 Gui, Main: Margin, 0, 0
 
-; global DynamicButtons := "Play,Edit,Exit"
-; global StaticButtons := "Record"
-; global SpecialButtons := "Pause" ; Work when not recording
 MainButtons = 
 (
 [F1]Record
@@ -177,13 +178,13 @@ For i,text in StrSplit(Mainbuttons, "`n")
   Hotkey, %hotkey%, %label%Hotkey
   Hotkey, ^%hotkey%, %label%OptionHotkey
 }
-Gui, Main: Show, NA y0, Macro Recorder
+Gui, Main: Show, NA y0, Monacro
 Gui, Main: Submit, NoHide
 
 ; Get the position of the main GUI window
 ; x left edge align ; y top align ; w width ; h height
 global GuiX, GuiY, GuiWidth, GuiHeight
-WinGetPos, GuiX, GuiY, GuiWidth, GuiHeight, Macro Recorder
+WinGetPos, GuiX, GuiY, GuiWidth, GuiHeight, Monacro
 
 DisableMainButton("Pause")
 UpdateTip("Welcome!")
@@ -736,6 +737,7 @@ LoadExitOptions() {
   global WorkDirInputText
   ; Gui, Exit: Add, Text, x0, %A_Space%WorkDir:%A_Space%
   ; Gui, Exit: Add, Text, x+0 w50 vWorkDir, %WorkDir%%A_Space%
+  Gui, Exit: Add, Button, x0 h20 gOpenWorkDir, OpenWorkDir
   
   Gui, Exit: Add, Edit, x0 w120 h20 vWorkDirInputText Tooltip, %WorkDir%
   Gui, Exit: Add, Button, x+0 w0 h0 Hidden gSetWorkDir Default, 
@@ -747,6 +749,12 @@ LoadExitOptions() {
   }
 }
 
+OpenWorkDir:
+global WorkDirPath
+  val := """" EditorPath """ """ WorkDirPath """"
+  Run, *RunAs %val%
+Return
+
 SetWorkDir:
 global WorkDir
   GuiControlGet, inputText, , WorkDirInputText
@@ -755,6 +763,7 @@ global WorkDir
   IfNotExist, %WorkDirPath%
       FileCreateDir, %WorkDirPath%
   UpdateTip("SetRecordFolder: " WorkDir)
+  Gui, Exit: Hide
 Return
 
 ChangeWorkDir:
@@ -770,10 +779,11 @@ Hide:
 hidebuttons:=!hidebuttons
 if hidebuttons {
   Gui Main:Hide
-	Gui Tip:Hide
+	Gui Tip1:Hide
+	Gui Tip0:Hide
 } else {
   Gui Main:Show
-	Gui Tip:Show
+	Gui Tip0:Show
 }
 Return
 
@@ -785,14 +795,20 @@ SetNewRecordPath() {
   else if (!isOverrideSaveMode && RegExMatch(NewRecordName, "Record_\d{12}")) {
     NewRecordName := "Record_" A_Now
   }
-  else if (isNewSaveMode && !RegExMatch(NewRecordName, "Record_\d{12}")) {
+  else if (isNewSaveMode) {
+    if (InStr(NewRecordName, "_")) {
+      RegExMatch(NewRecordName, "^(.*)_(\d+)$", match)
+      if (match1) {
+        NewRecordName := match1
+      }
+    }
     highest := 0
     Loop, %WorkDirPath%\*.ahk
     {
       SplitPath, A_LoopFilePath, FileName
-      if (InStr(FileName, NewRecordName "_")) {
-        number := StrSplit(FileName, NewRecordName "_")[2]
-        number := StrReplace(number, ".ahk", "")
+      if (InStr(FileName, NewRecordName)) {
+        RegExMatch(FileName, ".*_(\d+).ahk", match)
+        number := match1
         if (number > highest) 
           highest := number
       }

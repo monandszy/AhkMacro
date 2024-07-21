@@ -1,0 +1,1 @@
+global MainGuiHwnd := 0x71039e

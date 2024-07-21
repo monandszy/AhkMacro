@@ -12,14 +12,13 @@ SetWorkingDir %A_ScriptDir%
 ;----------------------------------------------------
 ; Static Options
 ;----------------------------------------------------
-global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11"
+global ExcludedKeys := "F1,F2,F3,F4,F5,F6,F8,F9,F10,F11" ; F12 left to you
 global SpecialKeys := "NumpadLeft,NumpadRight,NumpadEnter,Home,End,PgUp,PgDn,Left,Right,Up,Down,Delete,Insert"
 global ControlKeys := "Alt,Control,Shift,Win"
 global MouseVK = [1,2,4,5,6]
 global WheelVK = [156,157,158,159]
 global AggregateLogDelay := 200
-global LoggerLogFile = ".Logs/LoggerLog.log"
-global SettingsPath := "settings"
+global SettingsPath := "settings.txt"
 global LogColorSleep := 100
 ;----------------------------------------------------
 ; Loaded Options
@@ -66,11 +65,12 @@ global previousKey := ""
 global StartTime
 global ElapsedTime
 ;----------------------------------------------------
-FileDelete %LoggerLogFile%
-Log(name, text) {
-  FileAppend, %name%:[%text%]`n, %LoggerLogFile%,
-}
-Log("DateTime", A_Now)
+; global LoggerLogFile = ".Logs/LoggerLog.log"
+; FileDelete %LoggerLogFile%
+; Log(name, text) {
+;   FileAppend, %name%:[%text%]`n, %LoggerLogFile%,
+; }
+; Log("DateTime", A_Now)
 ;----------------------------------------------------
 global WM_ON_LOGGER := 0x0401
 global WM_OFF_LOGGER := 0x0402
@@ -93,7 +93,7 @@ Unstuck() {
 }
 
 Test(wParam, lParam, msg, hwnd) {
-  Log("Recived!", hwnd)
+  ; Log("Recived!", hwnd)
 }
 
 RecordStart(wParam, lParam, msg, hwnd) {
@@ -198,7 +198,7 @@ content =
 }
 ; RecordingTime: %ElapsedTime%ms
 PostMessage, 0x040B, 0,0,, %val% "ahk_id" MainGuiHwnd
-ExitApp ; If appendMode last 2 lines will be removed
+ExitApp
 )
   FileAppend, %content%, %NewRecordPath%
 }
@@ -272,7 +272,6 @@ global Aggregator
   key := GetKeyName(vksc)
   ; Log("KeyDown", A_ThisHotkey " " vksc " " key)
   if(isAggregateMode) {
-    Log("key", key)
     if (StrLen(key) = 1 && key~="\w") {
       Aggregator := Aggregator key
       Return ; Collect Words until interrupted
@@ -349,7 +348,6 @@ LogUpControlKey() {
 }
 
 LogAggregator() {
-  Log("is", Aggregator != "")
   if (Aggregator != "") {
     LogData("Send, " Aggregator)
     Aggregator := ""
@@ -371,7 +369,6 @@ LogWheelAggregator() {
 }
 
 LogKeyAggregator() {
-  Log("KeyboardAggregator", KeyboardAggregator)
   If (KeyboardAggregator != 0) {
     If (KeyboardAggregator = 1) {
       LogData("Send, {" previousKey "}")
@@ -465,7 +462,6 @@ LogWindow() {
   oldHwnd := hwnd
   oldtitle := title
   title := SubStr(title, 1, 50)
-  Log("tt", title)
 
   if (!A_IsUnicode) {
     GuiControl,, MyText, %title%

@@ -1,7 +1,9 @@
 #SingleInstance, force
 
-global LoggerPath := A_ScriptDir . "\Logger.ahk"
-global GuiPath := A_ScriptDir . "\Gui.ahk"
+global LoggerPath := A_ScriptDir "\Logger.ahk"
+global GuiPath := A_ScriptDir "\Gui.ahk"
+; global LoggerPath := A_ScriptDir "\MonacroLogger.exe"
+; global GuiPath := A_ScriptDir "\MonacroGui.exe"
 
 if (!FileExist(GuiPath)) {
   MsgBox, 4096, Error, Can't Find %GuiPath% !

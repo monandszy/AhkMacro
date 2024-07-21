@@ -4,10 +4,10 @@ EditorPath:C:\Program Files\VSCodium\VSCodium.exe
 UpdateLatestSelectOnRecord:1
 isTipEnabled:1
 ; Dynamic
-NewRecordName:Temp
-isAppendSaveMode:1
+NewRecordName:T_123_3
+isAppendSaveMode:0
 isOverrideSaveMode:0
-isNewSaveMode:0
+isNewSaveMode:1
 CoordinateMode:Window
 isAggregateMode:0
 isPreciseMode:1
@@ -18,10 +18,10 @@ isLogMouse:1
 isLogSleep:0
 isLogWindow:1
 isLogColor:0
-WorkDir:Temp
+WorkDir:Catium
 ; Util (auto generated)
-NewRecordPath:C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\Temp\Temp.ahk
-LatestSelectPath:C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\Temp\Temp.ahk
-LatestSelectName:Temp
-MainGuiHwnd:0x2102b0
-SharedPath:C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\.shared.ahk
+NewRecordPath:C:\Users\Name\..My\VSCode\AutoHotKey\Monacro\Macros\Catium\T_123_3.ahk
+LatestSelectPath:C:\Users\Name\..My\VSCode\AutoHotKey\Monacro\Macros\Catium\T_123_3.ahk
+LatestSelectName:T_123_3
+MainGuiHwnd:0x71039e
+SharedPath:C:\Users\Name\..My\VSCode\AutoHotKey\Monacro\Macros\.shared.ahk

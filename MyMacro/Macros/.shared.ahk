@@ -1,1 +1,0 @@
-global MainGuiHwnd := 0x2102b0

@@ -1,3 +1,4 @@
+
 WorkDir:Temp
 NewRecordName:Temp
 RecordFolderPath:C:\Users\Name\..My\VSCode\AutoHotKey\MyMacro\Macros\Temp\

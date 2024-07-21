@@ -1,0 +1,27 @@
+; Do not modify on runtime, settings are overriden on exit
+; Constant
+EditorPath:C:\Program Files\VSCodium\VSCodium.exe
+UpdateLatestSelectOnRecord:1
+isTipEnabled:1
+; Dynamic
+NewRecordName:MyRecord
+isAppendSaveMode:0
+isOverrideSaveMode:1
+isNewSaveMode:0
+CoordinateMode:Screen
+isAggregateMode:0
+isPreciseMode:1
+PlaySpeedRecord:1
+PlaySpeedMultiplier:1
+isLogKeyboard:1
+isLogMouse:0
+isLogSleep:1
+isLogWindow:0
+isLogColor:0
+WorkDir:Temp
+; Util (auto generated)
+NewRecordPath:
+LatestSelectPath:
+LatestSelectName:My_Record_4
+MainGuiHwnd:0x290390
+SharedPath:
