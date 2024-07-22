@@ -244,6 +244,50 @@ Record:
   }
 Return
 
+SetNewRecordPath() {
+  global NewRecordName, WorkDirPath, NewRecordPath
+  if (NewRecordName = "Null" || NewRecordName = "") {
+    NewRecordName := "Record_" A_Now
+  }
+  else if (!isOverrideSaveMode && RegExMatch(NewRecordName, "Record_\d{12}")) {
+    NewRecordName := "Record_" A_Now
+  }
+  else if (isNewSaveMode) {
+    if (InStr(NewRecordName, "_")) {
+      RegExMatch(NewRecordName, "^(.*)_(\d+)$", match)
+      if (match1) {
+        NewRecordName := match1
+      }
+    }
+    highest := 0
+    Loop, %WorkDirPath%\*.ahk
+    {
+      SplitPath, A_LoopFilePath, FileName
+      if (InStr(FileName, NewRecordName)) {
+        RegExMatch(FileName, ".*_(\d+).ahk", match)
+        number := match1
+        if (number > highest) 
+          highest := number
+      }
+    }
+    highest++
+    NewRecordName := NewRecordName "_" highest
+  }
+  
+  if (isOverrideSaveMode && FileExist(NewRecordPath)) {
+    overrideBackupPath := "Macros\override_backup"
+    FileDelete %overrideBackupPath% 
+    FileMove, %NewRecordPath%, %overrideBackupPath%
+  }
+
+  NewRecordPath := A_ScriptDir "\Macros\" WorkDir "\" NewRecordName ".ahk"
+
+  if (UpdateLatestSelectOnRecord) {
+    LatestSelectPath := NewRecordPath
+    LatestSelectName := NewRecordName
+  }
+}
+
 Pause:
   if (buttonToggled["Pause"]) { ; Revert to State 1
     Resume()
@@ -772,51 +816,6 @@ if hidebuttons {
 	Gui Tip0:Show
 }
 Return
-
-SetNewRecordPath() {
-  global NewRecordName, WorkDirPath, NewRecordPath
-  if (NewRecordName = "Null" || NewRecordName = "") {
-    NewRecordName := "Record_" A_Now
-  }
-  else if (!isOverrideSaveMode && RegExMatch(NewRecordName, "Record_\d{12}")) {
-    NewRecordName := "Record_" A_Now
-  }
-  else if (isNewSaveMode) {
-    if (InStr(NewRecordName, "_")) {
-      RegExMatch(NewRecordName, "^(.*)_(\d+)$", match)
-      if (match1) {
-        NewRecordName := match1
-      }
-    }
-    highest := 0
-    Loop, %WorkDirPath%\*.ahk
-    {
-      SplitPath, A_LoopFilePath, FileName
-      if (InStr(FileName, NewRecordName)) {
-        RegExMatch(FileName, ".*_(\d+).ahk", match)
-        number := match1
-        if (number > highest) 
-          highest := number
-      }
-    }
-    highest++
-    NewRecordName := NewRecordName "_" highest
-  }
-  
-  if (isOverrideSaveMode && FileExist(NewRecordPath)) {
-    overrideBackupPath := "Macros\override_backup"
-    FileDelete %overrideBackupPath% 
-    FileMove, %NewRecordPath%, %overrideBackupPath%
-  }
-
-  NewRecordPath := A_ScriptDir "\Macros\" WorkDir "\" NewRecordName ".ahk"
-
-  if (UpdateLatestSelectOnRecord) {
-    LatestSelectPath := NewRecordPath
-    LatestSelectName := NewRecordName
-  }
-}
-
 
 hasValue(list, item, del:=",") {
   if (item = "")
